@@ -1,13 +1,16 @@
 ﻿
+using System.Diagnostics;
 using System;
 
 namespace HeroesDB {
 
 	public class Extractor {
 
-		public String DatabaseFile;
-
 		public Extractor() {
+			Debug.WriteLine("Extractor() {");
+			Debug.Indent();
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
 	}

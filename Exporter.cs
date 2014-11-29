@@ -2,71 +2,44 @@
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.Data;
+using System.Diagnostics;
+using System.Drawing;
 using System.IO;
-using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using System;
-using System.Drawing;
-using System.Text.RegularExpressions;
 
 namespace HeroesDB {
 
 	public class Exporter {
 
-		private String databaseFile;
+		private String connectionString;
 
 		private String outputPath;
 
-		private Dictionary<String, Int32> itemStats;
-
-		public Exporter(string databaseFile, string outputPath) {
-			this.databaseFile = databaseFile;
+		public Exporter(String databaseFile, String outputPath) {
+			Debug.WriteLine("Exporter({0}, {1}) {{", new [] { databaseFile, outputPath });
+			Debug.Indent();
+			this.connectionString = String.Format("Data Source={0}; Version=3;", databaseFile);
 			this.outputPath = outputPath;
-		}
-
-		private void loadItemStats() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
-				connection.Open();
-				var command = connection.CreateCommand();
-				command.CommandText = @"
-					SELECT
-						ist.[Key],
-						ist._ROWID_ AS ID
-					FROM HDB_ItemStat AS ist
-				";
-				var reader = command.ExecuteReader();
-				this.itemStats = new Dictionary<String, Int32>();
-				while (reader.Read()) {
-					this.itemStats.Add(Convert.ToString(reader["Key"]), Convert.ToInt32(reader["ID"]));
-				}
-			}
-		}
-
-		private List<Int32> parseTypePrimaryStats(String stats) {
-			var result = new List<Int32>();
-			if (!String.IsNullOrEmpty(stats)) {
-				if (itemStats == null) {
-					this.loadItemStats();
-				}
-				foreach (var stat in stats.Split(',')) {
-					result.Add(this.itemStats[stat.Trim()]);
-				}
-			}
-			return result;
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
 		private String removeFormattingTags(String text) {
-			text = Regex.Replace(text, @"\s?<font.*<font.*?>\s?", "");
-			text = Regex.Replace(text, @"\s?</font>\s?", "");
-			text = Regex.Replace(text, @"\s?(\\n)+\s?", " ");
+			text = Regex.Replace(text, "<font.*?>", "");
+			text = Regex.Replace(text, "</font>", "");
+			text = Regex.Replace(text, @"\\n", " ");
+			text = Regex.Replace(text, " {2,}", " ");
+			text = Regex.Replace(text, @"\\""", @"""");
 			text = text.Trim();
 			return text;
 		}
 
 		public void ExportCharacters() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+			Debug.WriteLine("ExportCharacters() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -97,71 +70,34 @@ namespace HeroesDB {
 				var path = Path.Combine(this.outputPath, "characters.json");
 				File.WriteAllText(path, json);
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
-		public void ExportItemStats() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+		public void ExportClassification() {
+			Debug.WriteLine("ExportClassification() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
-					SELECT
-						ist._ROWID_ AS id,
-						ist.Type AS type,
-						ist.Name AS name,
-						ist.ShortName AS shortName,
-						ist.Description AS description,
-						ist.[Order] AS [order]
-					FROM HDB_ItemStat AS ist;
-				";
-				var reader = command.ExecuteReader();
-				var stats = new List<Dictionary<String, Object>>();
-				while (reader.Read()) {
-					var stat = new Dictionary<String, Object>();
-					for (var i = 0; i < reader.FieldCount; i += 1) {
-						if (reader.GetName(i) == "description") {
-							var description = this.removeFormattingTags(Convert.ToString(reader["description"]));
-							stat.Add(reader.GetName(i), description);
-						}
-						else {
-							stat.Add(reader.GetName(i), reader[i]);
-						}
-					}
-					stats.Add(stat);
-				}
-				var serializer = new JavaScriptSerializer();
-				var json = serializer.Serialize(stats);
-				var path = Path.Combine(this.outputPath, "item-stats.json");
-				File.WriteAllText(path, json);
-			}
-		}
-
-		public void ExportItemGroups() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
-				connection.Open();
-				var command = connection.CreateCommand();
-				command.CommandText = @"
-					SELECT
-						ig._ROWID_ AS GroupID,
-						ig.Name AS GroupName,
-						it._ROWID_ AS TypeID,
-						it.Name AS TypeName,
-						it.PrimaryStats AS TypePrimaryStats,
-						ic._ROWID_ AS CategoryID,
-						ic.Name AS CategoryName
-					FROM HDB_ItemGroup AS ig
-					INNER JOIN HDB_ItemType AS it ON it.GroupKey = ig.[Key]
-					INNER JOIN HDB_ItemCategory AS ic ON
-						ic.GroupKey = ig.[Key] AND
-						ic.TypeKey = it.[Key]
+					SELECT DISTINCT
+						c.GroupKey AS groupKey,
+						c.GroupName AS groupName,
+						c.TypeKey AS typeKey,
+						c.TypeName AS typeName,
+						c.TypePrimaryProperties AS typePrimaryProperties,
+						c.CategoryKey AS categoryKey,
+						c.CategoryName AS categoryName
+					FROM HDB_Classification AS c
+					WHERE c.GroupKey IS NOT NULL
 					ORDER BY
-						ig.[Order],
-						ig.Name,
-						it.[Order],
-						it.Name,
-						ic.[Order],
-						ic.Name;
+						c.GroupOrder,
+						c.GroupName,
+						c.TypeOrder,
+						c.TypeName,
+						c.CategoryOrder,
+						c.CategoryName;
 				";
 				var reader = command.ExecuteReader();
 				var table = new DataTable();
@@ -170,321 +106,104 @@ namespace HeroesDB {
 				var types = new List<Dictionary<String, Object>>();
 				var categories = new List<Dictionary<String, Object>>();
 				for (var i = 0; i < table.Rows.Count; i += 1) {
+					Debug.Write(".");
 					var row = table.Rows[i];
-					var categoryData = new Dictionary<String, Object>() {
-						{ "id", row["CategoryID"] },
-						{ "name", row["CategoryName"] }
-					};
-					categories.Add(categoryData);
+					categories.Add(new Dictionary<String, Object>() {
+						{ "key", row["categoryKey"] },
+						{ "name", row["categoryName"] }
+					});
 					var lastRow = table.Rows.Count - 1 == i;
-					var sameType = (lastRow || Convert.ToInt32(row["TypeID"]) == Convert.ToInt32(table.Rows[i + 1]["TypeID"]));
+					var sameType = lastRow || Convert.ToString(row["typeKey"]) == Convert.ToString(table.Rows[i + 1]["typeKey"]);
 					if (lastRow || !sameType) {
-						var primaryStats =  this.parseTypePrimaryStats(Convert.ToString(row["TypePrimaryStats"]));
-						var typeData = new Dictionary<String, Object>() {
-							{ "id", row["TypeID"] },
-							{ "name", row["TypeName"] },
-							{ "primaryStats", primaryStats },
+						var primaryProperties = new String[0]; 
+						if (row["typePrimaryProperties"] != DBNull.Value) {
+							primaryProperties = Convert.ToString(row["typePrimaryProperties"]).Split(new [] { ", " }, StringSplitOptions.None);
+						}
+						types.Add(new Dictionary<String, Object>() {
+							{ "key", row["typeKey"] },
+							{ "name", row["typeName"] },
+							{ "primaryProperties", primaryProperties },
 							{ "categories", categories }
-						};
-						types.Add(typeData);
+						});
 						categories = new List<Dictionary<String, Object>>();
-						var sameGroup = (lastRow || Convert.ToInt32(row["GroupID"]) == Convert.ToInt32(table.Rows[i + 1]["GroupID"]));
+						var sameGroup = lastRow || Convert.ToString(row["groupKey"]) == Convert.ToString(table.Rows[i + 1]["groupKey"]);
 						if (lastRow || !sameGroup) {
-							var groupData = new Dictionary<String, Object>() {
-								{ "id", row["GroupID"] },
-								{ "name", row["GroupName"] },
+							groups.Add(new Dictionary<String, Object>() {
+								{ "key", row["groupKey"] },
+								{ "name", row["groupName"] },
 								{ "types",  types }
-							};
-							groups.Add(groupData);
+							});
 							types = new List<Dictionary<String, Object>>();
 						}
 					}
 				}
+				Debug.WriteLine("");
+				var classification = new Dictionary<String, Object>() {
+					{ "groups", groups }
+				};
 				var serializer = new JavaScriptSerializer();
-				var json = serializer.Serialize(groups);
-				var path = Path.Combine(this.outputPath, "item-groups.json");
+				var json = serializer.Serialize(classification);
+				var path = Path.Combine(this.outputPath, "classification.json");
 				File.WriteAllText(path, json);
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
-		private Dictionary<String, Object> addSetFields(Dictionary<String, Object> item) {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+		private Dictionary<String, Dictionary<String, String[]>> getPrimaryProperties() {
+			var primaryProperties = new Dictionary<String, Dictionary<String, String[]>>();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
-				command.CommandText = @"
-					SELECT
-						ist.[Key],
-						ist.Name
-					FROM HDB_ItemStat AS ist
-					ORDER BY ist.[Order]
-				";
-				var reader = command.ExecuteReader();
-				var stats = new Dictionary<String, String>();
-				while (reader.Read()) {
-					stats.Add(Convert.ToString(reader["Key"]), Convert.ToString(reader["Name"]));
-				}
-				reader.Close();
-				command.CommandText = @"
-					SELECT DISTINCT i.Name
-					FROM HDB_ItemClassification AS ic
-					INNER JOIN HDB_Item AS i ON i.ID = ic.ItemID
-					INNER JOIN ItemClassInfo AS ici ON ici._ROWID_ = ic.ItemID
-					WHERE ic.SetID = @SetID
-					ORDER BY CASE ici.Category WHEN 'HELM' THEN 1 WHEN 'TUNIC' THEN 2 WHEN 'PANTS' THEN 3 WHEN 'GLOVES' THEN 4 WHEN 'BOOTS' THEN 5 END;
-				";
-				command.Parameters.Add("@SetID", DbType.Int32).Value = Convert.ToString(item["id"]).Replace("s", "");
-				reader = command.ExecuteReader();
-				var items = new List<String>();
-				var setNameParts = Convert.ToString(item["name"]).Split(new [] { ' ' });
-				while (reader.Read()) {
-					var name = Convert.ToString(reader["name"]);
-					for (var i = 0; i < setNameParts.Length; i++) {
-						if (!name.StartsWith(String.Concat(setNameParts[i], " "), StringComparison.InvariantCulture)) {
-							break;
-						}
-						name = name.Replace(setNameParts[i], "").Trim();
-					}
-					items.Add(name);
-				}
-				reader.Close();
-				item.Add("items", items);
-
 				command.CommandText = @"
 					SELECT DISTINCT
-						trs.Text AS RequiredSkill,
-						sr.Rank_String AS RequiredSkillRank
-					FROM (
-						SELECT
-							ici.RequiredSkill,
-							MAX(ici.RequiredSkillRank) AS RequiredSkillRank
-						FROM HDB_ItemClassification AS ic
-						INNER JOIN HDB_Item AS i ON i.ID = ic.ItemID
-						INNER JOIN ItemClassInfo AS ici ON ici._ROWID_ = ic.ItemID
-						WHERE ic.SetID = @SetID
-						GROUP BY ici.RequiredSkill
-					) AS t
-					LEFT JOIN HDB_Text AS trs ON trs.[Key] = 'HEROES_SKILL_NAME_' || UPPER(t.RequiredSkill)
-					LEFT JOIN SkillRankEnum AS sr ON sr.Rank_Num = t.RequiredSkillRank
-					ORDER BY trs.Text;
-				";
-				reader = command.ExecuteReader();
-				var requiredSkills = new Dictionary<String, Object>();
-				while (reader.Read()) {
-					requiredSkills.Add(Convert.ToString(reader["requiredSkill"]), reader["requiredSkillRank"]);
-				}
-				reader.Close();
-				item.Add("requiredSkills", requiredSkills);
-
-				command.CommandText = @"
-					SELECT
-						se.SetCount,
-						SUM(CASE WHEN se.EffectTarget = 'ATK' THEN se.Amount ELSE 0 END) AS ATK,
-						SUM(CASE WHEN se.EffectTarget = 'MATK' THEN se.Amount ELSE 0 END) AS MATK,
-						--SUM(CASE WHEN se.EffectTarget = 'HP' THEN se.Amount ELSE 0 END) AS HP,
-						SUM(CASE WHEN se.EffectTarget = 'DEF' THEN se.Amount ELSE 0 END) AS DEF,
-						SUM(CASE WHEN se.EffectTarget = 'STR' THEN se.Amount ELSE 0 END) AS STR,
-						SUM(CASE WHEN se.EffectTarget = 'INT' THEN se.Amount ELSE 0 END) AS INT,
-						SUM(CASE WHEN se.EffectTarget = 'DEX' THEN se.Amount ELSE 0 END) AS DEX,
-						SUM(CASE WHEN se.EffectTarget = 'WILL' THEN se.Amount ELSE 0 END) AS WILL
-					FROM SetInfo AS s
-					INNER JOIN SetEffectInfo AS se ON se.SetID = s.SetID
-					WHERE s._ROWID_ = @SetID
-					GROUP BY se.SetCount
-					ORDER BY se.SetCount;
-				";
-				reader = command.ExecuteReader();
-				var setEffects = new Dictionary<String, Object>();
-				while (reader.Read()) {
-					var effects = new Dictionary<String, Object>();
-					for (var i = 0; i < reader.FieldCount; i += 1) {
-						if (reader.GetName(i) != "SetCount" && Convert.ToInt32(reader[i]) > 0) {
-							effects.Add(stats[Convert.ToString(reader.GetName(i))], reader[i]);
-						}
-					}
-					setEffects.Add(Convert.ToString(reader["SetCount"]), effects);
-				}
-				reader.Close();
-				item.Add("setEffects", setEffects);
-			}
-			item.Remove("requiredSkill");
-			item.Remove("requiredSkillRank");
-			return item;
-		}
-
-		public void ExportItems() {
-			var path = Path.Combine(this.outputPath, "items");
-			if (Directory.Exists(path)) {
-				Directory.Delete(path, true);
-			}
-			Directory.CreateDirectory(path);
-			path = Path.Combine(this.outputPath, "type-items");
-			if (Directory.Exists(path)) {
-				Directory.Delete(path, true);
-			}
-			Directory.CreateDirectory(path);
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
-				connection.Open();
-				var command = connection.CreateCommand();
-				command.CommandText = @"
-					SELECT
-						it._ROWID_ AS ID,
-						it.PrimaryStats
-					FROM HDB_ItemType AS it;
+						c.GroupKey AS groupKey,
+						c.TypeKey AS typeKey,
+						c.TypePrimaryProperties AS typePrimaryProperties
+					FROM HDB_Classification AS c;
 				";
 				var reader = command.ExecuteReader();
-				var typePrimaryStats = new Dictionary<Int32, List<Int32>>();
 				while (reader.Read()) {
-					var primaryStats = this.parseTypePrimaryStats(Convert.ToString(reader["PrimaryStats"]));
-					typePrimaryStats.Add(Convert.ToInt32(reader["ID"]), primaryStats);
+					var group = Convert.ToString(reader["groupKey"]);
+					var type = Convert.ToString(reader["typeKey"]);
+					if (!primaryProperties.ContainsKey(group)) {
+						primaryProperties.Add(group, new Dictionary<String, String[]>());
+					}
+					var properties = new String[0];
+					if (reader["typePrimaryProperties"] != DBNull.Value) {
+						properties = Convert.ToString(reader["typePrimaryProperties"]).Split(new [] { ", " }, StringSplitOptions.None);
+					}
+					primaryProperties[group].Add(type, properties);
 				}
-				reader.Close();
-				command = connection.CreateCommand();
-				command.CommandText = @"
-					SELECT
-						i.ID AS id,
-						i.GroupID AS groupId,
-						i.TypeID AS typeId,
-						i.CategoryID AS categoryId,
-						i.IconID AS iconId,
-						i.Name AS name,
-						i.Description AS description,
-						i.Rarity AS rarity,
-						i.RequiredSkill AS requiredSkill,
-						i.RequiredSkillRank AS requiredSkillRank,
-						i.RequiredLevel AS RequiredLevel,
-						i.ClassRestriction AS ClassRestriction,
-						i.HDBATK AS HDBATK,
-						i.ATK AS ATK,
-						i.MATK AS MATK,
-						i.ATK_Speed AS ATK_Speed,
-						i.Critical AS Critical,
-						i.Balance AS Balance,
-						i.DEF AS DEF,
-						i.Res_Critical AS Res_Critical,
-						i.STR AS STR,
-						i.DEX AS DEX,
-						i.INT AS INT,
-						i.WILL AS WILL,
-						i.STAMINA AS STAMINA
-					FROM HDB_Item AS i
-					ORDER BY
-						i.GroupID,
-						i.TypeID,
-						i.RequiredLevel DESC,
-						i.Name,
-						i.CategoryID;
-				";
-				reader = command.ExecuteReader();
-				var itemNames = new Dictionary<String, List<String>>();
-				var typeItems = new List<Dictionary<String, Object>>();
-				var skipForTypeItems = new List<String>() { "RequiredSkill", "RequiredSkillRank" };
-				var serializer = new JavaScriptSerializer();
-				var json = "";
-				var previousTypeId = -1;
-				while (reader.Read()) {
-					if (!itemNames.ContainsKey(Convert.ToString(reader["name"]))) {
-						itemNames.Add(Convert.ToString(reader["name"]), new List<String>());
-					}
-					if (!itemNames[Convert.ToString(reader["name"])].Contains(Convert.ToString(reader["id"]))) {
-						itemNames[Convert.ToString(reader["name"])].Add(Convert.ToString(reader["id"]));
-					}
-					if (previousTypeId != Convert.ToInt32(reader["typeId"])) {
-						if (previousTypeId != -1) {
-							json = serializer.Serialize(typeItems);
-							path = Path.Combine(this.outputPath, "type-items");
-							path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(previousTypeId), "json"));
-							File.WriteAllText(path, json);
-							typeItems = new List<Dictionary<String, Object>>();
-						}
-						previousTypeId = Convert.ToInt32(reader["typeId"]);
-					}
-					var typeItemAlreadyAdded = false;
-					foreach (var typeItemTmp in typeItems) {
-						if (Convert.ToString(typeItemTmp["id"]) == Convert.ToString(reader["id"])) {
-							typeItemAlreadyAdded = true;
-							((List<Int32>)typeItemTmp["categoryId"]).Add(Convert.ToInt32(reader["categoryId"]));
-						}
-					}
-					if (!typeItemAlreadyAdded) {
-						var item = new Dictionary<String, Object>();
-						item["stats"] = new Dictionary<String, Object>();
-						var typeItem = new Dictionary<String, Object>();
-						typeItem["stats"] = new Dictionary<String, Object>();
-						var description = "";
-						for (var i = 0; i < reader.FieldCount; i += 1) {
-							if (reader.GetName(i) == "categoryId") {
-								item.Add(reader.GetName(i), new List<Int32>() { Convert.ToInt32(reader[i]) });
-								typeItem.Add(reader.GetName(i), new List<Int32>() { Convert.ToInt32(reader[i]) });
-							}
-							else if (reader.GetName(i) == "description") {
-								description = this.removeFormattingTags(Convert.ToString(reader["description"]));
-								item.Add(reader.GetName(i), description);
-							}
-							else if (this.itemStats.ContainsKey(reader.GetName(i))) {
-								var statId = this.itemStats[reader.GetName(i)];
-								((Dictionary<String, Object>)item["stats"]).Add(Convert.ToString(statId), reader[i]);
-								if (typePrimaryStats[Convert.ToInt32(reader["typeId"])].Contains(statId)) {
-									((Dictionary<String, Object>)typeItem["stats"]).Add(Convert.ToString(statId), reader[i]);
-								}
-							}
-							else {
-								item.Add(reader.GetName(i), reader[i]);
-								if (!skipForTypeItems.Contains(reader.GetName(i))) {
-									typeItem.Add(reader.GetName(i), reader[i]);
-								}
-							}
-						}
-						if (((Dictionary<String, Object>)typeItem["stats"]).Count == 0) {
-							typeItem.Add("description", description);
-						}
-						typeItems.Add(typeItem);
-						if (Convert.ToString(reader["id"]).StartsWith("s", StringComparison.InvariantCulture)) {
-							this.addSetFields(item);
-						}
-						json = serializer.Serialize(item);
-						path = Path.Combine(this.outputPath, "items");
-						path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(item["id"]), "json"));
-						File.WriteAllText(path, json);
-					}
-				}
-				json = serializer.Serialize(typeItems);
-				path = Path.Combine(this.outputPath, "type-items");
-				path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(previousTypeId), "json"));
-				File.WriteAllText(path, json);
-				json = serializer.Serialize(itemNames);
-				path = Path.Combine(this.outputPath, Path.ChangeExtension("item-names", "json"));
-				File.WriteAllText(path, json);
 			}
+			return primaryProperties;
 		}
 
 		public void ExportIcons(String fromPath) {
+			Debug.WriteLine("ExportIcons({0}) {{", new [] { fromPath });
+			Debug.Indent();
 			/*
-				SELECT
-					t.Material,
-					COUNT(*)
-				FROM (
-					SELECT ico.Material1 as Material
-					FROM HDB_Item AS i
-					INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
-					UNION ALL
-					SELECT ico.Material2
-					FROM HDB_Item AS i
-					INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
-					UNION ALL
-					SELECT ico.Material3
-					FROM HDB_Item AS i
-					INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
-				) AS t
-				WHERE t.material IS NOT NULL
-				GROUP BY t.Material
-				ORDER BY COUNT(*) DESC;
-			 */
+			SELECT
+				t.Material,
+				COUNT(*)
+			FROM (
+				SELECT ico.Material1 as Material
+				FROM HDB_Item AS i
+				INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
+				UNION ALL
+				SELECT ico.Material2
+				FROM HDB_Item AS i
+				INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
+				UNION ALL
+				SELECT ico.Material3
+				FROM HDB_Item AS i
+				INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
+			) AS t
+			WHERE t.material IS NOT NULL
+			GROUP BY t.Material
+			ORDER BY COUNT(*) DESC;
+			*/
 			var path = Path.Combine(this.outputPath, "icons");
-			if (Directory.Exists(path)) {
-				Directory.Delete(path, true);
-			}
 			Directory.CreateDirectory(path);
 			var materials = new Dictionary<String, Color>() {
 				{ "metal", Color.FromArgb(204, 204, 204) },
@@ -503,7 +222,7 @@ namespace HeroesDB {
 				{ "rainbow", Color.FromArgb(229, 6, 102) },
 				{ "metal_bronze", Color.FromArgb(166, 152, 131) },
 				{ "skull", Color.FromArgb(247, 249, 243) },
-				{ "leather_brown", Color.FromArgb(101, 84, 66) },
+				{ "leather_brown", Color.FromArgb(202, 172, 140) },
 				{ "white", Color.FromArgb(255, 255, 255) },
 				{ "leather_enamel", Color.FromArgb(246, 246, 247) },
 				{ "cloth_bright", Color.FromArgb(217, 233, 244) },
@@ -528,7 +247,7 @@ namespace HeroesDB {
 				{ "laghodessa", Color.FromArgb(144, 166, 5) },
 				{ "cloth_santa", Color.FromArgb(230, 31, 45) },
 				{ "giantspider", Color.FromArgb(141, 134, 108) },
-				{ "beard", Color.FromArgb(94, 56, 53) },
+				{ "beard", Color.FromArgb(180, 153, 127) },
 				{ "fix_bluechannel", Color.FromArgb(2, 93, 140) },
 				{ "fix_greenchannel", Color.FromArgb(27, 175, 27) },
 				{ "fix_redchannel", Color.FromArgb(240, 35, 17) },
@@ -560,51 +279,52 @@ namespace HeroesDB {
 			};
 			var icon = Paloma.TargaImage.LoadTargaImage(Path.Combine(fromPath, "blank.tga"));
 			icon.Save(Path.Combine(this.outputPath, "icons", "0.png"));
-			//icon = Paloma.TargaImage.LoadTargaImage(Path.Combine(fromPath, "package_newbieperfect.tga"));
-			//icon.Save(Path.Combine(this.outputPath, "icons", "set.png"));
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
 					SELECT
-						ii._ROWID_ AS ID,
-						ii.Icon AS Icon,
-						ii.Material1 AS Material1,
-						ii.Material2 AS Material2,
-						ii.Material3 AS Material3
-					FROM HDB_ItemIcon AS ii
-					INNER JOIN HDB_Item AS i ON i.IconID = ii._ROWID_;
+						i._ROWID_ AS id,
+						i.Icon AS icon,
+						i.Material1 AS material1,
+						i.Material2 AS material2,
+						i.Material3 AS material3
+					FROM HDB_Icons AS i
+					LEFT JOIN HDB_Equips AS e ON e.IconID = i._ROWID_
+					LEFT JOIN HDB_Sets AS s ON s.IconID = i._ROWID_
+					WHERE
+						COALESCE(e.ID, s.ID) IS NOT NULL;
 				";
 				var reader = command.ExecuteReader();
 				while (reader.Read()) {
-					var iconFileName = String.Concat(reader["Icon"], ".tga");
+					var iconFileName = String.Concat(reader["icon"], ".tga");
 					var iconFile = Path.Combine(fromPath, iconFileName);
 					if (File.Exists(iconFile)) {
+						Debug.Write(".");
 						icon = Paloma.TargaImage.LoadTargaImage(iconFile);
 						icon.MakeTransparent(Color.FromArgb(0, 0, 0));
 						var needColors = false;
-						needColors |= reader["Material1"] != DBNull.Value;
-						needColors |= reader["Material2"] != DBNull.Value;
-						needColors |= reader["Material3"] != DBNull.Value;
+						needColors |= reader["material1"] != DBNull.Value;
+						needColors |= reader["material2"] != DBNull.Value;
+						needColors |= reader["material3"] != DBNull.Value;
 						if (needColors) {
 							for (var x = 0; x < icon.Width; x += 1) {
 								for (var y = 0; y < icon.Height; y += 1) {
 									var color = icon.GetPixel(x, y);
 									var baseColor = color;
 									var brightness = 1.0;
-									if (reader["Material1"] != DBNull.Value && color.R > color.G && color.R > color.B) {
-										var material = Convert.ToString(reader["Material1"]);
+									if (reader["material1"] != DBNull.Value && color.R > color.G && color.R > color.B) {
+										var material = Convert.ToString(reader["material1"]);
 										baseColor = materials.ContainsKey(material) ? materials[material] : Color.FromArgb(204, 204, 204);
 										brightness = Convert.ToDouble(color.R) / 255;
 									}
-									else if (reader["Material2"] != DBNull.Value && color.G > color.R && color.G > color.B) {
-										var material = Convert.ToString(reader["Material2"]);
+									else if (reader["material2"] != DBNull.Value && color.G > color.R && color.G > color.B) {
+										var material = Convert.ToString(reader["material2"]);
 										baseColor = materials.ContainsKey(material) ? materials[material] : Color.FromArgb(153, 153, 153);
 										brightness = Convert.ToDouble(color.G) / 255;
 									}
-									else if (reader["Material3"] != DBNull.Value && color.B > color.R && color.B > color.G) {
-										var material = Convert.ToString(reader["Material3"]);
+									else if (reader["material3"] != DBNull.Value && color.B > color.R && color.B > color.G) {
+										var material = Convert.ToString(reader["material3"]);
 										baseColor = materials.ContainsKey(material) ? materials[material] : Color.FromArgb(102, 102, 102);
 										brightness = Convert.ToDouble(color.B) / 255;
 									}
@@ -615,10 +335,394 @@ namespace HeroesDB {
 								}
 							}
 						}
-						icon.Save(Path.Combine(this.outputPath, "icons", String.Concat(reader["ID"], ".png")));
+						icon.Save(Path.Combine(this.outputPath, "icons", String.Concat(reader["id"], ".png")));
 					}
 				}
+				Debug.WriteLine("");
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void ExportEquips() {
+			Debug.WriteLine("ExportEquips() {");
+			Debug.Indent();
+			var path = Path.Combine(this.outputPath, "objects", "equips");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			var serializer = new JavaScriptSerializer();
+			var primaryProperties = this.getPrimaryProperties();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						e.Key AS key,
+						e.GroupKey AS groupKey,
+						e.TypeKey AS typeKey,
+						e.CategoryKey AS categoryKey,
+						e.IconID AS iconID,
+						e.Name AS name,
+						e.Description AS description,
+						e.Rarity AS rarity,
+						e.SetKey AS setKey,
+						e.SetName AS setName,
+						e.RequiredSkillName AS requiredSkillName,
+						e.RequiredSkillRank AS requiredSkillRank,
+						e.RequiredLevel AS requiredLevel,
+						e.ClassRestriction AS classRestriction,
+						e.ATK AS atk,
+						e.PATK AS patk,
+						e.MATK AS matk,
+						e.SPEED AS speed,
+						e.CRIT AS crit,
+						e.BAL AS bal,
+						e.HP AS hp,
+						e.DEF AS def,
+						e.CRITRES AS critres,
+						e.STR AS str,
+						e.INT AS int,
+						e.DEX AS dex,
+						e.WILL AS will,
+						e.STAMINA AS stamina
+					FROM HDB_Equips AS e
+					ORDER BY
+						e.GroupKey,
+						e.TypeKey,
+						e.RequiredLevel DESC,
+						e.Name;
+				";
+				var reader = command.ExecuteReader();
+				var table = new DataTable();
+				table.Load(reader);
+				var equips = new List<Dictionary<String, Object>>();
+				for (var i = 0; i < table.Rows.Count; i += 1) {
+					var row = table.Rows[i];
+					var equip = new Dictionary<String, Object>() {
+						{ "key", row["key"] },
+						{ "type", "equip" },
+						{ "categoryKeys", new List<String>() { Convert.ToString(row["categoryKey"]) } },
+						{ "iconID", row["iconID"] },
+						{ "name", row["name"] },
+						{ "rarity", row["rarity"] }
+					};
+					var properties = primaryProperties[Convert.ToString(row["groupKey"])][Convert.ToString(row["typeKey"])];
+					if (properties.Length == 0) {
+						equip.Add("description", this.removeFormattingTags(Convert.ToString(row["description"])));
+					}
+					foreach (var property in properties) {
+						equip.Add(property, row[property]);
+					}
+					equips.Add(equip);
+					var lastRow = table.Rows.Count - 1 == i;
+					var sameType = lastRow || Convert.ToString(row["typeKey"]) == Convert.ToString(table.Rows[i + 1]["typeKey"]);
+					if (lastRow || !sameType) {
+						Debug.Write(".");
+						var json = serializer.Serialize(equips);
+						path = Path.Combine(this.outputPath, "objects");
+						path = Path.Combine(path, Path.ChangeExtension(String.Concat(row["groupKey"], "-", row["typeKey"]), "json"));
+						File.WriteAllText(path, json);
+						equips = new List<Dictionary<String, Object>>();
+					}
+				}
+				Debug.WriteLine("");
+				foreach (DataRow row in table.Rows) {
+					Debug.Write(".");
+					var equip = new Dictionary<String, Object>();
+					foreach (DataColumn column in table.Columns) {
+						switch (column.ColumnName) {
+							case "categoryKey":
+								equip.Add("categoryKeys", new List<String>() { Convert.ToString(row["categoryKey"]) });
+								break;
+							case "description":
+								var description = this.removeFormattingTags(Convert.ToString(row[column.ColumnName]));
+								equip.Add(column.ColumnName, description);
+								break;
+							case "setKey":
+								if (row["setKey"] == DBNull.Value) {
+									equip.Add("set", null);
+								}
+								else {
+									equip.Add("set", new Dictionary<String, Object>() {
+										{ "key", row["setKey"] },
+										{ "name", row["setName"] }
+									});
+								}
+								break;
+							case "setName":
+								break;
+							case "requiredSkillName":
+								var skills = new List<Dictionary<String, Object>>();
+								if (row["requiredSkillName"] != DBNull.Value) {
+									skills.Add(new Dictionary<String, Object>() {
+										{ "name", row["requiredSkillName"] },
+										{ "rank", row["requiredSkillRank"] }
+									});
+								}
+								equip.Add("requiredSkills", skills);
+								break;
+							case "requiredSkillRank":
+								break;
+							default:
+								equip.Add(column.ColumnName, row[column.ColumnName]);
+								break;
+						}
+					}
+					var json = serializer.Serialize(equip);
+					path = Path.Combine(this.outputPath, "objects", "equips");
+					path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(row["key"]), "json"));
+					File.WriteAllText(path, json);
+				}
+				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void ExportSets() {
+			Debug.WriteLine("ExportSets() {");
+			Debug.Indent();
+			var path = Path.Combine(this.outputPath, "objects", "sets");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			var serializer = new JavaScriptSerializer();
+			var primaryProperties = this.getPrimaryProperties();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						sc.SetKey AS setKey,
+						sc.CategoryKey AS categoryKey
+					FROM HDB_SetCategories AS sc
+					ORDER BY
+						sc.SetKey,
+						sc.CategoryKey;
+				";
+				var reader = command.ExecuteReader();
+				var categoryKeys = new Dictionary<String, List<String>>();
+				while (reader.Read()) {
+					var setKey = Convert.ToString(reader["setKey"]);
+					if (!categoryKeys.ContainsKey(setKey)) {
+						Debug.Write(".");
+						categoryKeys.Add(setKey, new List<String>());
+					}
+					if (reader["categoryKey"] != DBNull.Value) {
+						categoryKeys[setKey].Add(Convert.ToString(reader["categoryKey"]));
+					}
+				}
+				Debug.WriteLine("");
+				reader.Close();
+				command.CommandText = @"
+					SELECT
+						sp.SetKey AS setKey,
+						s.Name AS setName,
+						sp.EquipKey AS equipKey,
+						sp.EquipName AS equipName,
+						sp.Base AS base
+					FROM HDB_SetParts AS sp
+					INNER JOIN HDB_Sets AS s ON s.Key = sp.SetKey
+					ORDER BY
+						sp.SetKey,
+						sp.[Order],
+						sp.EquipName;
+				";
+				reader = command.ExecuteReader();
+				var parts = new Dictionary<String, List<Dictionary<String, Object>>>();
+				while (reader.Read()) {
+					var setKey = Convert.ToString(reader["setKey"]);
+					var setNameParts = Convert.ToString(reader["setName"]).Split(new [] { ' ' });
+					if (!parts.ContainsKey(setKey)) {
+						Debug.Write(".");
+						parts.Add(setKey, new List<Dictionary<String, Object>>());
+					}
+					var equipName = Convert.ToString(reader["equipName"]);
+					for (var i = 0; i < setNameParts.Length; i += 1) {
+						if (!equipName.StartsWith(String.Concat(setNameParts[i], " "), StringComparison.InvariantCulture)) {
+							break;
+						}
+						equipName = equipName.Substring(setNameParts[i].Length).Trim();
+					}
+					parts[setKey].Add(new Dictionary<String, Object>() {
+						{ "key", reader["equipKey"] },
+						{ "name", equipName },
+						{ "base", Convert.ToInt32(reader["base"]) == 1 }
+					});
+				}
+				/*
+				foreach (var setKey in parts.Keys) {
+					var sameFirstWord = true;
+					while (sameFirstWord) {
+						String firstWord = null;
+						foreach (var part in parts[setKey]) {
+							var name = (String)part["name"];
+							if (name.IndexOf(' ') == -1) {
+								sameFirstWord = false;
+								break;
+							}
+							firstWord = firstWord ?? name.Substring(0, name.IndexOf(' '));
+							sameFirstWord &= name.StartsWith(firstWord, StringComparison.InvariantCulture);
+						}
+						if (sameFirstWord) {
+							foreach (var part in parts[setKey]) {
+								part["name"] = ((String)part["name"]).Substring(firstWord.Length + 1);
+							}
+						}
+					}
+				}
+				*/
+				reader.Close();
+				command.CommandText = @"
+					SELECT
+						ss.SetKey AS setKey,
+						ss.SkillName AS skillName,
+						ss.SkillRank AS skillRank
+					FROM HDB_SetSkills AS ss
+					ORDER BY
+						ss.SetKey,
+						ss.SkillName;
+				";
+				reader = command.ExecuteReader();
+				var requiredSkills = new Dictionary<String, List<Dictionary<String, Object>>>();
+				while (reader.Read()) {
+					var setKey = Convert.ToString(reader["setKey"]);
+					if (!requiredSkills.ContainsKey(setKey)) {
+						Debug.Write(".");
+						requiredSkills.Add(setKey, new List<Dictionary<String, Object>>());
+					}
+					requiredSkills[setKey].Add(new Dictionary<String, Object>() {
+						{ "name", reader["skillName"] },
+						{ "rank", reader["skillRank"] }
+					});
+				}
+				Debug.WriteLine("");
+				reader.Close();
+				command.CommandText = @"
+					SELECT
+						se.SetKey AS setKey,
+						se.PartCount AS partCount,
+						se.ATK AS atk,
+						se.PATK AS patk,
+						se.MATK AS matk,
+						se.HP AS hp,
+						se.DEF AS def,
+						se.STR AS str,
+						se.INT AS int,
+						se.DEX AS dex,
+						se.WILL AS will
+					FROM HDB_SetEffects AS se
+					ORDER BY
+						se.SetKey,
+						se.PartCount;
+				";
+				reader = command.ExecuteReader();
+				var effects = new Dictionary<String, Dictionary<String, Dictionary<String, Object>>>();
+				while (reader.Read()) {
+					var setKey = Convert.ToString(reader["setKey"]);
+					var partCount = Convert.ToString(reader["partCount"]);
+					if (!effects.ContainsKey(setKey)) {
+						Debug.Write(".");
+						effects.Add(setKey, new Dictionary<String, Dictionary<String, Object>>());
+					}
+					if (!effects[setKey].ContainsKey(partCount)) {
+						Debug.Write(".");
+						effects[setKey].Add(partCount, new Dictionary<String, Object>());
+					}
+					for (var i = 2; i < reader.FieldCount; i += 1) {
+						if (Convert.ToInt32(reader[i]) > 0) {
+							effects[setKey][partCount].Add(reader.GetName(i), reader[i]);
+						}
+					}
+				}
+				Debug.WriteLine("");
+				reader.Close();
+				command.CommandText = @"
+					SELECT
+						s.Key AS key,
+						s.GroupKey AS groupKey,
+						s.TypeKey AS typeKey,
+						s.IconID AS iconID,
+						s.Name AS name,
+						s.Rarity AS rarity,
+						s.RequiredLevel AS requiredLevel,
+						s.ClassRestriction AS classRestriction,
+						s.ATK AS atk,
+						s.PATK AS patk,
+						s.MATK AS matk,
+						s.SPEED AS speed,
+						s.CRIT AS crit,
+						s.BAL AS bal,
+						s.HP AS hp,
+						s.DEF AS def,
+						s.CRITRES AS critres,
+						s.STR AS str,
+						s.INT AS int,
+						s.DEX AS dex,
+						s.WILL AS will,
+						s.STAMINA AS stamina
+					FROM HDB_Sets AS s
+					ORDER BY
+						s.GroupKey,
+						s.TypeKey,
+						s.RequiredLevel DESC,
+						s.Name;
+				";
+				reader = command.ExecuteReader();
+				var table = new DataTable();
+				table.Load(reader);
+				var sets = new List<Dictionary<String, Object>>();
+				for (var i = 0; i < table.Rows.Count; i += 1) {
+					var row = table.Rows[i];
+					if (row["groupKey"] == DBNull.Value) {
+						continue;
+					}
+					var set = new Dictionary<String, Object>() {
+						{ "key", row["key"] },
+						{ "type", "set" },
+						{ "categoryKeys", categoryKeys[Convert.ToString(row["key"])] },
+						{ "iconID", row["iconID"] },
+						{ "name", row["name"] },
+						{ "rarity", row["rarity"] }
+					};
+					var properties = primaryProperties[Convert.ToString(row["groupKey"])][Convert.ToString(row["typeKey"])];
+					foreach (var property in properties) {
+						set.Add(property, row[property]);
+					}
+					sets.Add(set);
+					var lastRow = table.Rows.Count - 1 == i;
+					var sameType = lastRow || Convert.ToString(row["typeKey"]) == Convert.ToString(table.Rows[i + 1]["typeKey"]);
+					if (lastRow || !sameType) {
+						Debug.Write(".");
+						var json = serializer.Serialize(sets);
+						path = Path.Combine(this.outputPath, "objects");
+						path = Path.Combine(path, Path.ChangeExtension(String.Concat(row["groupKey"], "-", row["typeKey"]), "json"));
+						File.WriteAllText(path, json);
+						sets = new List<Dictionary<String, Object>>();
+					}
+				}
+				Debug.WriteLine("");
+				foreach (DataRow row in table.Rows) {
+					Debug.Write(".");
+					var set = new Dictionary<String, Object>();
+					var key = Convert.ToString(row["key"]);
+					foreach (DataColumn column in table.Columns) {
+						set.Add(column.ColumnName, row[column.ColumnName]);
+					}
+					set.Add("categoryKeys", categoryKeys[key]);
+					set.Add("parts", parts[key]);
+					set.Add("requiredSkills", requiredSkills.ContainsKey(key) ? requiredSkills[key] : new List<Dictionary<String, Object>>());
+					set.Add("effects", effects[key]);
+					var json = serializer.Serialize(set);
+					path = Path.Combine(this.outputPath, "objects", "sets");
+					path = Path.Combine(path, Path.ChangeExtension(key, "json"));
+					File.WriteAllText(path, json);
+				}
+				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
 	}

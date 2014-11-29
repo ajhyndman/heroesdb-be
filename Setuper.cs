@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.Data.SQLite;
 using System.Data;
+using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 using System;
@@ -11,18 +12,21 @@ namespace HeroesDB {
 
 	public class Setuper {
 
-		private String databaseFile;
+		private String connectionString;
 
 		private List<String> enabledFeatures;
 
-		public Setuper(string databaseFile) {
-			this.databaseFile = databaseFile;
+		public Setuper(String databaseFile) {
+			Debug.WriteLine("Setuper({0}) {{", new [] { databaseFile });
+			Debug.Indent();
+			this.connectionString = String.Format("Data Source={0}; Version=3;", databaseFile);
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
 		private void loadFeatures() {
 			var region = ConfigurationManager.AppSettings["Region"];
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = String.Format(@"
@@ -46,13 +50,13 @@ namespace HeroesDB {
 			var match = test.Match(itemFeatures);
 			var captures = match.Groups["item"].Captures;
 			var featuredItem = true;
-			for (var i = 0; i < captures.Count; i++) {
+			for (var i = 0; i < captures.Count; i += 1) {
 				if (captures[i].Value == "&&" || captures[i].Value == "||") {
 					continue;
 				}
 				var disabledFeature = captures[i].Value.StartsWith("!", StringComparison.InvariantCulture);
 				var existingFeature = this.enabledFeatures.Contains(captures[i].Value.Replace("!", ""));
-				var enabledFeature = (!disabledFeature && existingFeature) || (disabledFeature && !existingFeature) ? true : false;
+				var enabledFeature = (!disabledFeature && existingFeature) || (disabledFeature && !existingFeature);
 				if (i == 0) {
 					featuredItem = enabledFeature;
 				}
@@ -69,8 +73,9 @@ namespace HeroesDB {
 		}
 
 		public void ImportText(String textFile) {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+			Debug.WriteLine("ImportText({0}) {{", new [] { textFile });
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -78,8 +83,8 @@ namespace HeroesDB {
 				command.CommandText = @"
 					DROP TABLE IF EXISTS HDB_Text;
 					CREATE TABLE HDB_Text (
-						[Key] NVARCHAR(250) PRIMARY KEY NOT NULL UNIQUE,
-						Text NVARCHAR(5000) NOT NULL
+						Key NVARCHAR PRIMARY KEY,
+						Text NVARCHAR NOT NULL
 					);
 				";
 				command.ExecuteNonQuery();
@@ -100,19 +105,22 @@ namespace HeroesDB {
 				}
 				transaction.Commit();
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
 		public void SetCharacters() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+			Debug.WriteLine("SetCharacters() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
 					DROP TABLE IF EXISTS HDB_Characters;
 					CREATE TABLE HDB_Characters (
-						ID INT PRIMARY KEY NOT NULL UNIQUE,
-						Name NVARCHAR(50) NOT NULL,
-						Description NVARCHAR(50) NOT NULL
+						ID INT PRIMARY KEY,
+						Name NVARCHAR NOT NULL,
+						Description NVARCHAR NOT NULL
 					);
 					INSERT INTO HDB_Characters
 					SELECT
@@ -129,72 +137,32 @@ namespace HeroesDB {
 				";
 				command.ExecuteNonQuery();
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
-		public void SetFeaturedEquipItems() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+		public void SetFeaturedItems() {
+			Debug.WriteLine("SetFeaturedItems() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
 				command.Transaction = transaction;
 				command.CommandText = @"
-					DROP TABLE IF EXISTS HDB_FeaturedEquipItem;
-					CREATE TABLE HDB_FeaturedEquipItem (
+					DROP TABLE IF EXISTS HDB_FeaturedItems;
+					CREATE TABLE HDB_FeaturedItems (
 						ItemID INT NOT NULL UNIQUE
 					);
-					INSERT INTO HDB_FeaturedEquipItem
-					SELECT i._ROWID_
-					FROM EquipItemInfo AS i
-					WHERE i.Feature IS NULL;
-				";
-				command.ExecuteNonQuery();
-				command.CommandText = @"
-					SELECT
-						i._ROWID_ AS ID,
-						i.Feature
-					FROM EquipItemInfo AS i
-					WHERE i.Feature IS NOT NULL;
-				";
-				var reader = command.ExecuteReader();
-				var featuredItems = new List<Int32>();
-				while (reader.Read()) {
-					if (this.isFeatured(Convert.ToString(reader["Feature"]))) {
-						featuredItems.Add(Convert.ToInt32(reader["ID"]));
-					}
-				}
-				reader.Close();
-				command.CommandText = "INSERT INTO HDB_FeaturedEquipItem VALUES (@ID);";
-				command.Parameters.Add("@ID", DbType.Int32);
-				foreach (var id in featuredItems) {
-					command.Parameters["@ID"].Value = id;
-					command.ExecuteNonQuery();
-				}
-				transaction.Commit();
-			}
-		}
-
-		public void SetFeaturedItemClasses() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
-				connection.Open();
-				var transaction = connection.BeginTransaction();
-				var command = connection.CreateCommand();
-				command.Transaction = transaction;
-				command.CommandText = @"
-					DROP TABLE IF EXISTS HDB_FeaturedItemClass;
-					CREATE TABLE HDB_FeaturedItemClass (
-						ItemID INT NOT NULL UNIQUE
-					);
-					INSERT INTO HDB_FeaturedItemClass
-					SELECT i._ROWID_
+					INSERT INTO HDB_FeaturedItems
+					SELECT i._ROWID_ AS ItemID
 					FROM ItemClassInfo AS i
 					WHERE i.Feature IS NULL;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
 					SELECT
-						i._ROWID_ AS ID,
+						i._ROWID_ AS ItemID,
 						i.Feature
 					FROM ItemClassInfo AS i
 					WHERE i.Feature IS NOT NULL;
@@ -203,330 +171,312 @@ namespace HeroesDB {
 				var featuredItems = new List<Int32>();
 				while (reader.Read()) {
 					if (this.isFeatured(Convert.ToString(reader["Feature"]))) {
-						featuredItems.Add(Convert.ToInt32(reader["ID"]));
+						featuredItems.Add(Convert.ToInt32(reader["ItemID"]));
 					}
 				}
 				reader.Close();
-				command.CommandText = "INSERT INTO HDB_FeaturedItemClass VALUES (@ID);";
-				command.Parameters.Add("@ID", DbType.Int32);
+				command.CommandText = "INSERT INTO HDB_FeaturedItems VALUES (@ItemID);";
+				command.Parameters.Add("@ItemID", DbType.Int32);
 				foreach (var id in featuredItems) {
-					command.Parameters["@ID"].Value = id;
+					command.Parameters["@ItemID"].Value = id;
 					command.ExecuteNonQuery();
 				}
 				transaction.Commit();
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
-		public void SetItemStats() {
-			var region = ConfigurationManager.AppSettings["Region"];
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+		public void SetFeaturedEquips() {
+			Debug.WriteLine("SetFeaturedEquips() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
+				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
-				command.CommandText = String.Format(@"
-					DROP TABLE IF EXISTS HDB_ItemStat;
-					CREATE TABLE HDB_ItemStat (
-						[Key] NVARCHAR(50) PRIMARY KEY NOT NULL,
-						Type NVARCHAR(50) NOT NULL,
-						Name NVARCHAR(50) NOT NULL,
-						ShortName NVARCHAR(50) NOT NULL,
-						Description NVARCHAR(100),
-						[Order] INT
+				command.Transaction = transaction;
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_FeaturedEquips;
+					CREATE TABLE HDB_FeaturedEquips (
+						EquipID INT NOT NULL UNIQUE
 					);
-					INSERT INTO HDB_ItemStat
-					SELECT
-						ist.StatName AS [Key],
-						'Base' AS Type,
-						tn.Text AS Name,
-						tsn.Text AS ShortName,
-						td.Text AS Description,
-						ist.[Order]
-					FROM ItemStatInfo AS ist
-					LEFT JOIN FeatureMatrix AS f ON
-						f.Feature = 'ExtremeMode' AND
-						f.[{0}] IS NOT NULL
-					LEFT JOIN HDB_Text AS tn ON tn.Key = 'GAMEUI_HEROES_ITEMSTAT_' || UPPER(ist.StatName)
-					LEFT JOIN HDB_Text AS tsn ON tsn.Key = 'GAMEUI_HEROES_CHARACTER_DIALOG_' || UPPER(ist.StatName)
-					LEFT JOIN HDB_Text AS td ON td.Key = 'GAMEUI_HEROES_STATTOOLTIP_' || CASE WHEN f.Feature IS NOT NULL THEN 'EX_' ELSE '' END || UPPER(ist.StatName)
-					WHERE ist.StatName IN ('ATK', 'MATK', 'ATK_Speed', 'Critical', 'Balance', 'DEF', 'Res_Critical', 'STR', 'DEX', 'INT', 'WILL', 'STAMINA')
-					UNION ALL
-					SELECT 'HDBATK', 'HDBATK', 'ATT', 'ATT', NULL, -100
-					UNION ALL
-					SELECT 'RequiredLevel', 'RequiredLevel', 'Required Level', 'Level', NULL, 101
-					UNION ALL
-					SELECT 'ClassRestriction', 'ClassRestriction', 'Character Restriction', 'Character', NULL, 100;
-				", region);
+					INSERT INTO HDB_FeaturedEquips
+					SELECT e._ROWID_ AS EquipID
+					FROM EquipItemInfo AS e
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_ 
+					WHERE e.Feature IS NULL;
+				";
 				command.ExecuteNonQuery();
+				command.CommandText = @"
+					SELECT
+						e._ROWID_ AS EquipID,
+						e.Feature
+					FROM EquipItemInfo AS e
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_ 
+					WHERE e.Feature IS NOT NULL;
+				";
+				var reader = command.ExecuteReader();
+				var featuredItems = new List<Int32>();
+				while (reader.Read()) {
+					if (this.isFeatured(Convert.ToString(reader["Feature"]))) {
+						featuredItems.Add(Convert.ToInt32(reader["EquipID"]));
+					}
+				}
+				reader.Close();
+				command.CommandText = "INSERT INTO HDB_FeaturedEquips VALUES (@EquipID);";
+				command.Parameters.Add("@EquipID", DbType.Int32);
+				foreach (var id in featuredItems) {
+					command.Parameters["@EquipID"].Value = id;
+					command.ExecuteNonQuery();
+				}
+				transaction.Commit();
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
 		public void SetClassification() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+			Debug.WriteLine("SetClassification() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
 				command.Transaction = transaction;
 				command.CommandText = @"
-					DROP TABLE IF EXISTS HDB_ItemClassification;
-					CREATE TABLE HDB_ItemClassification (
-						ItemID INT NOT NULL,
-						EquipID INT NOT NULL,
-						SetID INT,
-						GroupKey NVARCHAR(50),
-						GroupName NVARCHAR(100),
-						GroupOrder INT NOT NULL,
-						TypeKey NVARCHAR(50),
-						TypeName NVARCHAR(100),
-						TypeOrder INT NOT NULL,
-						TypePrimaryStats NVARCHAR(250),
-						CategoryKey NVARCHAR(50),
-						CategoryName NVARCHAR(100),
-						CategoryOrder INT NOT NULL
+					DROP TABLE IF EXISTS HDB_Classification;
+					CREATE TABLE HDB_Classification (
+						ObjectID INT NOT NULL,
+						ObjectType NVARACHAR NOT NULL,
+						GroupKey NVARCHAR,
+						GroupName NVARCHAR,
+						GroupOrder INT,
+						TypeKey NVARCHAR,
+						TypeName NVARCHAR,
+						TypeOrder INT,
+						TypePrimaryProperties NVARCHAR,
+						CategoryKey NVARCHAR,
+						CategoryName NVARCHAR,
+						CategoryOrder INT,
+						CONSTRAINT [unique] UNIQUE(ObjectID, ObjectType, GroupKey, TypeKey, CategoryKey)
 					);
 
-					INSERT INTO HDB_ItemClassification
+					INSERT INTO HDB_Classification
 					SELECT
-						i._ROWID_ AS ItemID,
-						e._ROWID_ AS EquipID,
-						NULL AS SetID,
-						i.Category AS GroupKey,
+						e._ROWID_ AS ObjectID,
+						'equip' AS ObjectType,
+						LOWER(i.Category) AS GroupKey,
 						tgn.Text AS GroupName,
 						1 AS GroupOrder,
-						'ALL' AS TypeKey,
+						'all' AS TypeKey,
 						'All' AS TypeName,
 						1 AS TypeOrder,
-						'RequiredLevel, HDBATK, Balance, Critical, ATK_Speed' AS TypePrimaryStats,
-						e.EquipClass AS CategoryKey,
+						'atk, bal, crit, speed, requiredLevel' AS TypePrimaryProperties,
+						LOWER(e.EquipClass) AS CategoryKey,
 						tcn.Text AS CategoryName,
-						CASE e.EquipClass WHEN 'DUALSWORD' THEN 1 WHEN 'DUALSPEAR' THEN 2 WHEN 'LONGSWORD' THEN 3 WHEN 'HAMMER' THEN 4 WHEN 'STAFF' THEN 5 WHEN 'SCYTHE' THEN 6 WHEN 'PILLAR' THEN 7 WHEN 'BLASTER' THEN 8 WHEN 'BOW' THEN 9 WHEN 'CROSSGUN' THEN 10 WHEN 'DUALBLADE' THEN 11 WHEN 'GREATSWORD' THEN 12 WHEN 'BATTLEGLAIVE' THEN 13 WHEN 'LONGBLADE' THEN 14 ELSE 15 END AS CategoryOrder 
-					FROM ItemClassInfo AS i
-					INNER JOIN HDB_FeaturedItemClass AS fi ON fi.ItemID = i._ROWID_
-					INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
-					INNER JOIN HDB_FeaturedEquipItem AS fe ON fe.ItemID = e._ROWID_
-					INNER JOIN HDB_Text AS tgn ON tgn.[Key] = 'HEROES_ITEM_EQUIP_PART_NAME_' || i.Category
-					INNER JOIN HDB_Text AS tcn ON tcn.[Key] = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
+						CASE e.EquipClass WHEN 'DUALSWORD' THEN 1 WHEN 'DUALSPEAR' THEN 2 WHEN 'LONGSWORD' THEN 3 WHEN 'HAMMER' THEN 4 WHEN 'STAFF' THEN 5 WHEN 'SCYTHE' THEN 6 WHEN 'PILLAR' THEN 7 WHEN 'BLASTER' THEN 8 WHEN 'BOW' THEN 9 WHEN 'CROSSGUN' THEN 10 WHEN 'DUALBLADE' THEN 11 WHEN 'GREATSWORD' THEN 12 WHEN 'BATTLEGLAIVE' THEN 13 WHEN 'LONGBLADE' THEN 14 ELSE 15 END AS CategoryOrder
+					FROM EquipItemInfo AS e
+					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+					INNER JOIN HDB_Text AS tgn ON tgn.Key = 'HEROES_ITEM_EQUIP_PART_NAME_' || i.Category
+					INNER JOIN HDB_Text AS tcn ON tcn.Key = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
 					WHERE i.Category = 'WEAPON';
 
-					INSERT INTO HDB_ItemClassification
+					INSERT INTO HDB_Classification
 					SELECT
-						i._ROWID_ AS ItemID,
-						e._ROWID_ AS EquipID,
-						NULL AS SetID,
-						'ARMOR' AS GroupKey,
+						s._ROWID_ AS ObjectID,
+						'set' AS ObjectType,
+						'armor' AS GroupKey,
 						tgn.Text AS GroupName,
 						2 AS GroupOrder,
-						e.EquipClass AS TypeKey,
-						REPLACE(ttn.Text, ' Armor', '') AS TypeName,
-						CASE e.EquipClass WHEN 'CLOTH' THEN 2 WHEN 'LIGHT_ARMOR' THEN 3 WHEN 'HEAVY_ARMOR' THEN 4 WHEN 'PLATE_ARMOR' THEN 5 END AS TypeOrder,
-						'ClassRestriction, RequiredLevel, DEF, STR, INT' AS TypePrimaryStats,
-						i.Category AS CategoryKey,
-						tcn.Text AS CategoryName,
-						CASE i.Category WHEN 'HELM' THEN 1 WHEN 'TUNIC' THEN 2 WHEN 'PANTS' THEN 3 WHEN 'GLOVES' THEN 4 WHEN 'BOOTS' THEN 5 END AS CategoryOrder
-					FROM ItemClassInfo AS i
-					INNER JOIN HDB_FeaturedItemClass AS fi ON fi.ItemID = i._ROWID_
-					INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
-					INNER JOIN HDB_FeaturedEquipItem AS fe ON fe.ItemID = e._ROWID_
-					INNER JOIN HDB_Text AS tgn ON tgn.[Key] = 'HEROES_ITEM_TRADECATEGORY_NAME_ARMOR'
-					INNER JOIN HDB_Text AS ttn ON ttn.[Key] = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
-					INNER JOIN HDB_Text AS tcn ON tcn.[Key] = 'HEROES_ITEM_EQUIP_PART_NAME_' || i.Category
-					WHERE e.EquipClass IN ('CLOTH', 'LIGHT_ARMOR', 'HEAVY_ARMOR', 'PLATE_ARMOR');
-
-					INSERT INTO HDB_ItemClassification
-					SELECT
-						i._ROWID_ AS ItemID,
-						e._ROWID_ AS EquipID,
-						s._ROWID_ AS SetID,
-						'ARMOR' AS GroupKey,
-						tgn.Text AS GroupName,
-						2 AS GroupOrder,
-						'SET' AS TypeKey,
+						'set' AS TypeKey,
 						'Set' AS TypeName,
 						1 AS TypeOrder,
-						'RequiredLevel, DEF, STR, INT, DEX, WILL' AS TypePrimaryStats,
-						UPPER(ec.Name) AS CategoryKey,
-						ec.Name AS CategoryName,
-						ec.ID AS CategoryOrder
+						'def, str, int, dex, will, requiredLevel' AS TypePrimaryProperties,
+						LOWER(sc.Name) AS CategoryKey,
+						sc.Name AS CategoryName,
+						sc.ID AS CategoryOrder
 					FROM SetInfo AS s
-					INNER JOIN SetItemInfo AS si ON si.SetID = s.SetID
-					INNER JOIN ItemClassInfo AS i ON i.ItemClass = si.ItemClass
-					INNER JOIN EquipItemInfo AS e ON e.ItemClass = si.ItemClass 
 					INNER JOIN (
-						SELECT
-							si.SetID,
-							COUNT(*) AS c
-						FROM SetItemInfo AS si
-						WHERE si.ItemClass = si.BaseItemClass
-						GROUP BY si.SetID
-					) AS sic ON sic.SetID = s.SetID
-					INNER JOIN (
-						SELECT
-							si.SetID,
-							c.ID,
-							c.Name,
-							COUNT(*) AS c
-						FROM SetItemInfo AS si
-						INNER JOIN ItemClassInfo AS i ON i.ItemClass = si.ItemClass
-						INNER JOIN HDB_FeaturedItemClass AS fi ON fi.ItemID = i._ROWID_
-						INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
-						INNER JOIN HDB_FeaturedEquipItem AS fe ON fe.ItemID = e._ROWID_
-						INNER JOIN HDB_Characters AS c ON i.ClassRestriction & c.ID = c.ID
-						WHERE e.EquipClass IN ('CLOTH', 'LIGHT_ARMOR', 'HEAVY_ARMOR', 'PLATE_ARMOR')
-						GROUP BY
+						SELECT DISTINCT
 							si.SetID,
 							c.ID,
 							c.Name
-					) AS ec ON
-						ec.SetID = s.SetId AND
-						ec.c = sic.c
-					INNER JOIN HDB_Text AS tgn ON tgn.[Key] = 'HEROES_ITEM_TRADECATEGORY_NAME_ARMOR';
+						FROM SetItemInfo AS si
+						INNER JOIN ItemClassInfo AS i ON i.ItemClass = si.ItemClass
+						INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+						INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
+						INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
+						INNER JOIN HDB_Characters AS c ON c.ID = i.ClassRestriction & c.ID
+						WHERE e.EquipClass IN ('CLOTH', 'LIGHT_ARMOR', 'HEAVY_ARMOR', 'PLATE_ARMOR')
+					) AS sc ON sc.SetID = s.SetId
+					INNER JOIN HDB_Text AS tgn ON tgn.Key = 'HEROES_ITEM_TRADECATEGORY_NAME_ARMOR';
 
-					INSERT INTO HDB_ItemClassification
+					INSERT INTO HDB_Classification
 					SELECT
-						i._ROWID_ AS ItemID,
-						e._ROWID_ AS EquipID,
-						NULL AS SetID,
-						e.EquipClass AS GroupKey,
+						e._ROWID_ AS ObjectID,
+						'equip' AS ObjectType,
+						'armor' AS GroupKey,
+						tgn.Text AS GroupName,
+						2 AS GroupOrder,
+						REPLACE(LOWER(e.EquipClass), '_armor', '') AS TypeKey,
+						REPLACE(ttn.Text, ' Armor', '') AS TypeName,
+						CASE e.EquipClass WHEN 'CLOTH' THEN 2 WHEN 'LIGHT_ARMOR' THEN 3 WHEN 'HEAVY_ARMOR' THEN 4 WHEN 'PLATE_ARMOR' THEN 5 END AS TypeOrder,
+						'def, str, int, classRestriction, requiredLevel' AS TypePrimaryProperties,
+						LOWER(i.Category) AS CategoryKey,
+						tcn.Text AS CategoryName,
+						CASE i.Category WHEN 'HELM' THEN 1 WHEN 'TUNIC' THEN 2 WHEN 'PANTS' THEN 3 WHEN 'GLOVES' THEN 4 WHEN 'BOOTS' THEN 5 END AS CategoryOrder
+					FROM EquipItemInfo AS e
+					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+					INNER JOIN HDB_Text AS tgn ON tgn.Key = 'HEROES_ITEM_TRADECATEGORY_NAME_ARMOR'
+					INNER JOIN HDB_Text AS ttn ON ttn.Key = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
+					INNER JOIN HDB_Text AS tcn ON tcn.Key = 'HEROES_ITEM_EQUIP_PART_NAME_' || i.Category
+					WHERE e.EquipClass IN ('CLOTH', 'LIGHT_ARMOR', 'HEAVY_ARMOR', 'PLATE_ARMOR');
+
+					INSERT INTO HDB_Classification
+					SELECT
+						e._ROWID_ AS ObjectID,
+						'equip' AS ObjectType,
+						LOWER(e.EquipClass) AS GroupKey,
 						tgn.Text AS GroupName,
 						3 AS GroupOrder,
-						CASE WHEN i.Category IN ('ARTIFACT', 'BRACELET') THEN 'SPECIAL' ELSE 'ORDINARY' END AS TypeKey,
+						CASE WHEN i.Category IN ('ARTIFACT', 'BRACELET') THEN 'special' ELSE 'ordinary' END AS TypeKey,
 						CASE WHEN i.Category IN ('ARTIFACT', 'BRACELET') THEN 'Special' ELSE 'Ordinary' END AS TypeName,
 						CASE WHEN i.Category IN ('ARTIFACT', 'BRACELET') THEN 2 ELSE 1 END AS TypeOrder,
-						CASE WHEN i.Category IN ('ARTIFACT', 'BRACELET') THEN NULL ELSE 'ClassRestriction, RequiredLevel, STR, INT, DEF' END AS TypePrimaryStats,
-						i.Category AS CategoryKey,
+						CASE WHEN i.Category IN ('ARTIFACT', 'BRACELET') THEN NULL ELSE 'str, int, def, classRestriction, requiredLevel' END AS TypePrimaryProperties,
+						LOWER(i.Category) AS CategoryKey,
 						tcn.Text AS CategoryName,
 						1 AS CategoryOrder
-					FROM ItemClassInfo AS i
-					INNER JOIN HDB_FeaturedItemClass AS fi ON fi.ItemID = i._ROWID_
-					INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
-					INNER JOIN HDB_FeaturedEquipItem AS fe ON fe.ItemID = e._ROWID_
-					INNER JOIN HDB_Text AS tgn ON tgn.[Key] = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
-					INNER JOIN HDB_Text AS tcn ON tcn.[Key] = 'HEROES_ITEM_EQUIP_PART_NAME_' || i.Category
+					FROM EquipItemInfo AS e
+					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+					INNER JOIN HDB_Text AS tgn ON tgn.Key = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
+					INNER JOIN HDB_Text AS tcn ON tcn.Key = 'HEROES_ITEM_EQUIP_PART_NAME_' || i.Category
 					WHERE
 						e.EquipClass = 'ACCESSORY' AND
 						i.Category IN ('ARTIFACT', 'BELT', 'BRACELET', 'CHARM', 'EARRING', 'RING');
 
-					INSERT INTO HDB_ItemClassification
+					INSERT INTO HDB_Classification
 					SELECT
-						i._ROWID_ AS ItemID,
-						e._ROWID_ AS EquipID,
-						NULL AS SetID,
-						'OFFHAND' AS GroupKey,
+						e._ROWID_ AS ObjectID,
+						'equip' AS ObjectType,
+						'offhand' AS GroupKey,
 						'Off-hand' AS GroupName,
 						4 AS GroupOrder,
-						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 'SHIELDS' ELSE 'OTHER' END AS TypeKey,
-						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 'Shields' ELSE 'Other' END AS TypeName,
+						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 'shield' ELSE 'other' END AS TypeKey,
+						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 'Shield' ELSE 'Other' END AS TypeName,
 						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 1 ELSE 2 END AS TypeOrder,
-						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 'RequiredLevel, DEF, STR, DEX, WILL' ELSE 'RequiredLevel, INT, HDBATK, Critical, DEF' END AS TypePrimaryStats,
-						e.EquipClass AS CategoryKey,
+						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 'def, str, dex, will, requiredLevel' ELSE 'int, atk, crit, def, requiredLevel' END AS TypePrimaryProperties,
+						LOWER(e.EquipClass) AS CategoryKey,
 						tcn.Text AS CategoryName,
 						1 AS CategoryOrder
-					FROM ItemClassInfo AS i
-					INNER JOIN HDB_FeaturedItemClass AS fi ON fi.ItemID = i._ROWID_
-					INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
-					INNER JOIN HDB_FeaturedEquipItem AS fe ON fe.ItemID = e._ROWID_
-					INNER JOIN HDB_Text AS tcn ON tcn.[Key] = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
+					FROM EquipItemInfo AS e
+					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+					INNER JOIN HDB_Text AS tcn ON tcn.Key = 'HEROES_ITEM_EQUIP_CLASS_NAME_' || e.EquipClass
 					WHERE e.EquipClass IN ('LARGESHIELD', 'SHIELD', 'SPELLBOOK', 'CASTLET');
 
-					DELETE FROM HDB_ItemClassification
-					WHERE HDB_ItemClassification.EquipID IN (
-						SELECT e._ROWID_
-						FROM EquipItemInfo AS e
-						WHERE e.MaxDurability = 999999
-					);
+					INSERT INTO HDB_Classification
+					SELECT
+						s._ROWID_ AS ObjectID,
+						'set' AS ObjectType,
+						NULL AS GroupKey,
+						NULL AS GroupName,
+						NULL AS GroupOrder,
+						NULL AS TypeKey,
+						NULL AS TypeName,
+						NULL AS TypeOrder,
+						NULL AS TypePrimaryProperties,
+						NULL AS CategoryKey,
+						NULL AS CategoryName,
+						NULL AS CategoryOrder
+					FROM SetInfo AS s
+					INNER JOIN (
+						SELECT DISTINCT si.SetID
+						FROM SetItemInfo AS si
+						INNER JOIN EquipItemInfo AS e ON e.ItemClass = si.ItemClass
+						INNER JOIN HDB_Classification AS c ON
+							c.ObjectType = 'equip' AND
+							c.ObjectID = e._ROWID_
+					) AS fs ON fs.SetID = s.SetId
+					LEFT JOIN HDB_Classification AS c ON
+						c.ObjectType = 'set' AND
+						c.ObjectID = s._ROWID_
+					WHERE c.ObjectID IS NULL;
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DELETE FROM HDB_Classification
+					WHERE
+						HDB_Classification.ObjectType = 'equip' AND
+						HDB_Classification.ObjectID IN (
+							SELECT e._ROWID_
+							FROM EquipItemInfo AS e 
+							INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+							LEFT JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
+							LEFT JOIN ItemClassInfo AS ai ON ai.ItemClass = 'avatar_' || i.ItemClass
+							WHERE
+								e.MaxDurability = 999999 OR
+								i.ExpireIn IS NOT NULL OR
+								i.ItemClass LIKE '%_limitless' OR
+								i.ItemClass LIKE '%_comback' OR
+								i.ItemClass LIKE '%_provide' OR
+								i.ItemClass LIKE '%_fruitgift' OR
+								i.ItemClass LIKE '%_gift' OR
+								i.ItemClass LIKE '%_7days' OR
+								tn.Text GLOB '*[^A-z0-9 ()''.:-]*' OR
+								tn.Text LIKE '%(Event)' OR
+								ai.ItemClass IS NOT NULL
+						);
 
-					DELETE FROM HDB_ItemClassification
-					WHERE HDB_ItemClassification.ItemID IN (
-						SELECT i._ROWID_
-						FROM ItemClassInfo AS i
-						LEFT JOIN HDB_Text AS tn ON tn.[Key] = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
-						LEFT JOIN ItemClassInfo AS ai ON ai.ItemClass = 'avatar_' || i.ItemClass
-						WHERE
-							i.ExpireIn IS NOT NULL OR
-							i.ItemClass LIKE '%_limitless' OR
-							i.ItemClass LIKE '%_comback' OR
-							i.ItemClass LIKE '%_provide' OR
-							i.ItemClass LIKE '%_fruitgift' OR
-							i.ItemClass LIKE '%_gift' OR
-							i.ItemClass LIKE '%_7days' OR
-							tn.Text GLOB '*[^A-z0-9 ()''.:-]*' OR
-							tn.Text LIKE '%(Event)' OR
-							ai.ItemClass IS NOT NULL
-					);
-				";
-				command.ExecuteNonQuery();
-				command.CommandText = @"
-					DROP TABLE IF EXISTS HDB_ItemGroup;
-					CREATE TABLE HDB_ItemGroup (
-						[Key] NVARCHAR(50) PRIMARY KEY NOT NULL UNIQUE,
-						Name NVARCHAR(100) NOT NULL,
-						[Order] INT NOT NULL
-					);
-					INSERT INTO HDB_ItemGroup
-					SELECT DISTINCT
-						ic.GroupKey,
-						ic.GroupName,
-						ic.GroupOrder
-					FROM HDB_ItemClassification AS ic;
-				";
-				command.ExecuteNonQuery();
-				command.CommandText = @"
-					DROP TABLE IF EXISTS HDB_ItemType;
-					CREATE TABLE HDB_ItemType (
-						[Key] NVARCHAR(50) NOT NULL,
-						GroupKey NVARCHAR(50) NOT NULL,
-						Name NVARCHAR(100) NOT NULL,
-						[Order] INT NOT NULL,
-						PrimaryStats NVARCHAR(250)
-					);
-					INSERT INTO HDB_ItemType
-					SELECT DISTINCT
-						ic.TypeKey,
-						ic.GroupKey,
-						ic.TypeName,
-						ic.TypeOrder,
-						ic.TypePrimaryStats
-					FROM HDB_ItemClassification AS ic;
-				";
-				command.ExecuteNonQuery();
-				command.CommandText = @"
-					DROP TABLE IF EXISTS HDB_ItemCategory;
-					CREATE TABLE HDB_ItemCategory (
-						[Key] NVARCHAR(50) NOT NULL,
-						GroupKey NVARCHAR(50) NOT NULL,
-						TypeKey NVARCHAR(50) NOT NULL,
-						Name NVARCHAR(100) NOT NULL,
-						[Order] INT NOT NULL
-					);
-					INSERT INTO HDB_ItemCategory
-					SELECT DISTINCT
-						ic.CategoryKey,
-						ic.GroupKey,
-						ic.TypeKey,
-						ic.CategoryName,
-						ic.CategoryOrder
-					FROM HDB_ItemClassification AS ic;
+					DELETE FROM HDB_Classification
+					WHERE
+						HDB_Classification.ObjectType = 'set' AND
+						HDB_Classification.ObjectID IN (
+							SELECT s._ROWID_
+							FROM SetInfo AS s
+							WHERE
+								s.SetID NOT IN (
+									SELECT s.SetID
+									FROM SetInfo AS s
+									INNER JOIN SetItemInfo AS si ON si.SetID = s.SetID
+									INNER JOIN EquipItemInfo AS e ON e.ItemClass = si.ItemClass 
+									INNER JOIN HDB_Classification AS c ON
+										c.ObjectType = 'equip' AND
+										c.ObjectID = e._ROWID_
+								)
+						);
 				";
 				command.ExecuteNonQuery();
 				transaction.Commit();
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
-		public void SetIcons() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+		public void SetIcons(String iconPath) {
+			Debug.WriteLine("SetIcons() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
-					DROP TABLE IF EXISTS HDB_ItemIcon;
-					CREATE TABLE HDB_ItemIcon (
-						Icon NVARCHAR(50) NOT NULL,
-						IconBG NVARCHAR(50),
-						Material1 NVARCHAR(50),
-						Material2 NVARCHAR(50),
-						Material3 NVARCHAR(50)
+					DROP TABLE IF EXISTS HDB_Icons;
+					CREATE TABLE HDB_Icons (
+						Icon NVARCHAR NOT NULL,
+						IconBG NVARCHAR,
+						Material1 NVARCHAR,
+						Material2 NVARCHAR,
+						Material3 NVARCHAR
 					);
-					INSERT INTO HDB_ItemIcon
+					INSERT INTO HDB_Icons
 					SELECT DISTINCT
 						i.Icon,
 						i.IconBG,
@@ -537,78 +487,244 @@ namespace HeroesDB {
 					LEFT JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass;
 				";
 				command.ExecuteNonQuery();
+				command.CommandText = @"
+					SELECT i.Icon
+					FROM HDB_Icons AS i;
+				";
+				var reader = command.ExecuteReader();
+				var missingIcons = new List<String>();
+				while (reader.Read()) {
+					var iconFileName = String.Concat(reader["Icon"], ".tga");
+					var iconFile = Path.Combine(iconPath, iconFileName);
+					if (!File.Exists(iconFile)) {
+						missingIcons.Add(Convert.ToString(reader["Icon"]));
+					}
+				}
+				reader.Close();
+				command.CommandText = @"
+					DELETE FROM HDB_Icons
+					WHERE HDB_Icons.Icon = @Icon;
+				";
+				command.Parameters.Add("@Icon", DbType.String);
+				foreach (var icon in missingIcons) {
+					command.Parameters["@Icon"].Value = icon;
+					command.ExecuteNonQuery();
+				}
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
-		public void SetItems() {
-			var connectionString = String.Format("Data Source={0}; Version=3;", this.databaseFile);
-			using (var connection = new SQLiteConnection(connectionString)) {
+		public void SetEquips() {
+			Debug.WriteLine("SetEquips() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
-					DROP VIEW IF EXISTS HDB_Item;
-					CREATE VIEW HDB_Item AS
+					DROP TABLE IF EXISTS HDB_Equips;
+					CREATE TABLE HDB_Equips (
+						ID INT PRIMARY KEY,
+						Key NVARCHAR NOT NULL,
+						GroupKey NVARCHAR NOT NULL,
+						TypeKey NVARCHAR NOT NULL,
+						CategoryKey NVARCHAR NOT NULL,
+						IconID INT,
+						Name NVARCHAR NOT NULL,
+						Description NVARCHAR,
+						Rarity INT NOT NULL,
+						SetKey NVARCHAR,
+						SetName NVARCHAR,
+						RequiredSkillName NVARCHAR,
+						RequiredSkillRank NVARCHAR,
+						RequiredLevel INT NOT NULL,
+						ClassRestriction INT NOT NULL,
+						ATK INT NOT NULL,
+						PATK INT NOT NULL,
+						MATK INT NOT NULL,
+						SPEED INT NOT NULL,
+						CRIT INT NOT NULL,
+						BAL INT NOT NULL,
+						HP INT NOT NULL,
+						DEF INT NOT NULL,
+						CRITRES INT NOT NULL,
+						STR INT NOT NULL,
+						INT INT NOT NULL,
+						DEX INT NOT NULL,
+						WILL INT NOT NULL,
+						STAMINA INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(Key)
+					);
+					INSERT INTO HDB_Equips
+					SELECT
+						c.ObjectID AS ID,
+						LOWER(e.ItemClass) AS Key,
+						c.GroupKey,
+						c.TypeKey,
+						c.CategoryKey,
+						ico._ROWID_ AS IconID,
+						tn.Text AS Name,
+						td.Text AS Description,
+						i.Rarity,
+						NULL AS SetKey,
+						NULL AS SetName,
+						trs.Text AS RequiredSkillName,
+						sr.Rank_String AS RequiredSkillRank,
+						i.RequiredLevel,
+						i.ClassRestriction,
+						CASE WHEN e.MATK > 0 THEN e.MATK ELSE e.ATK END AS ATK,
+						e.ATK AS PATK,
+						e.MATK,
+						e.ATK_Speed AS SPEED,
+						e.Critical AS CRIT,
+						e.Balance AS BAL,
+						e.HP,
+						e.DEF,
+						e.Res_Critical AS CRITRES,
+						e.STR,
+						e.INT,
+						e.DEX,
+						e.WILL,
+						e.STAMINA
+					FROM HDB_Classification AS c
+					INNER JOIN EquipItemInfo AS e ON e._ROWID_ = c.ObjectID
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
+					LEFT JOIN HDB_Text AS td ON
+						td.Key = 'HEROES_ITEM_DESC_' || UPPER(i.ItemClass) AND
+						LENGTH(td.Text) > 0 AND
+						td.Text != '0' AND
+						td.Text != 'Effective equipment for PVP.' AND
+						td.Text != 'pvp\nEquipment' AND
+						td.Text != tn.Text
+					LEFT JOIN HDB_Text AS trs ON trs.Key = 'HEROES_SKILL_NAME_' || UPPER(i.RequiredSkill)
+					LEFT JOIN SkillRankEnum AS sr ON
+						sr.Rank_Num = i.RequiredSkillRank AND
+						sr.Rank_Num > 0
+					LEFT JOIN HDB_Icons AS ico ON
+						ico.Icon = i.Icon AND (
+							ico.IconBG = i.IconBG OR
+							COALESCE(ico.IconBG, i.IconBG) IS NULL
+						) AND (
+							ico.Material1 = e.Material1 OR
+							COALESCE(ico.Material1, e.Material1) IS NULL
+						) AND (
+							ico.Material2 = e.Material2 OR
+							COALESCE(ico.Material2, e.Material2) IS NULL
+						) AND (
+							ico.Material3 = e.Material3 OR
+							COALESCE(ico.Material3, e.Material3) IS NULL
+						)
+					WHERE
+						c.ObjectType = 'equip' AND
+						c.ObjectID != 3301;
+				";
+				command.ExecuteNonQuery();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void SetSets() {
+			Debug.WriteLine("SetSets() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var transaction = connection.BeginTransaction();
+				var command = connection.CreateCommand();
+				command.Transaction = transaction;
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_Sets;
+					CREATE TABLE HDB_Sets (
+						ID INT PRIMARY KEY,
+						Key NVARCHAR NOT NULL,
+						GroupKey NVARCHAR,
+						TypeKey NVARCHAR,
+						IconID INT,
+						Name NVARCHAR NOT NULL,
+						Rarity INT NOT NULL,
+						RequiredLevel INT NOT NULL,
+						ClassRestriction INT NOT NULL,
+						ATK INT NOT NULL,
+						PATK INT NOT NULL,
+						MATK INT NOT NULL,
+						SPEED INT NOT NULL,
+						CRIT INT NOT NULL,
+						BAL INT NOT NULL,
+						HP INT NOT NULL,
+						DEF INT NOT NULL,
+						CRITRES INT NOT NULL,
+						STR INT NOT NULL,
+						INT INT NOT NULL,
+						DEX INT NOT NULL,
+						WILL INT NOT NULL,
+						STAMINA INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(Key)
+					);
+					INSERT INTO HDB_Sets
+					SELECT
+						c.ObjectID AS ID,
+						LOWER(s.SetID) AS Key,
+						c.GroupKey,
+						c.TypeKey,
+						ss.IconID,
+						tn.Text AS Name,
+						ss.Rarity,
+						ss.RequiredLevel,
+						ss.ClassRestriction,
+						ss.ATK + COALESCE(se.ATK, 0) AS ATK,
+						ss.PATK + COALESCE(se.PATK, 0) AS PATK,
+						ss.MATK + COALESCE(se.MATK, 0) AS MATK,
+						ss.Speed AS SPEED,
+						ss.CRIT,
+						ss.BAL,
+						ss.HP + COALESCE(se.HP, 0) AS HP,
+						ss.DEF + COALESCE(se.DEF, 0) AS DEF,
+						ss.CRITRES,
+						ss.STR + COALESCE(se.STR, 0) AS STR,
+						ss.INT + COALESCE(se.INT, 0) AS INT,
+						ss.DEX + COALESCE(se.DEX, 0) AS DEX,
+						ss.WILL + COALESCE(se.WILL, 0) AS WILL,
+						ss.STAMINA
+					FROM (
+						SELECT DISTINCT
+							c.ObjectID,
+							c.GroupKey,
+							c.TypeKey
+						FROM HDB_Classification AS c
+						WHERE c.ObjectType = 'set'
+					) AS c
+					INNER JOIN SetInfo AS s ON s._ROWID_ = c.ObjectID
+					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_SETITEM_NAME_' || UPPER(s.SetID)
+					INNER JOIN (
 						SELECT
-							CAST(icf.ItemID AS NVARCHAR) AS ID,
-							i.ItemClass AS [Key],
-							ig._ROWID_ AS GroupID,
-							it._ROWID_ AS TypeID,
-							ic._ROWID_ AS CategoryID,
-							ico._ROWID_ AS IconID,
-							tn.Text AS Name,
-							td.Text AS Description,
-							i.Rarity,
-							trs.Text AS RequiredSkill,
-							sr.Rank_String AS RequiredSkillRank,
-							i.RequiredLevel,
-							i.ClassRestriction,
-							CASE WHEN e.MATK > 0 THEN e.MATK ELSE e.ATK END AS HDBATK,
-							e.ATK,
-							e.MATK,
-							e.ATK_Speed,
-							e.Critical,
-							e.Balance,
-							e.HP,
-							e.DEF,
-							e.Res_Critical,
-							e.STR,
-							e.INT,
-							e.DEX,
-							e.WILL,
-							e.STAMINA
-						FROM (
-							SELECT icf.*
-							FROM HDB_ItemClassification AS icf
-							INNER JOIN (
-								SELECT
-									icf.ItemID,
-									MIN(icf.EquipID) AS EquipID
-								FROM HDB_ItemClassification AS icf
-								GROUP BY icf.ItemID
-							) AS t ON
-								t.ItemID = icf.ItemID AND
-								t.EquipID = icf.EquipID
-							WHERE icf.SetID IS NULL
-						) AS icf
-						INNER JOIN HDB_ItemGroup AS ig ON ig.[Key] = icf.GroupKey
-						INNER JOIN HDB_ItemType AS it ON
-							it.[Key] = icf.TypeKey AND
-							it.GroupKey = icf.GroupKey
-						INNER JOIN HDB_ItemCategory AS ic ON
-							ic.[Key] = icf.CategoryKey AND
-							ic.TypeKey = icf.TypeKey AND
-							ic.GroupKey = icf.GroupKey
-						INNER JOIN ItemClassInfo AS i ON i._ROWID_ = icf.ItemID
-						LEFT JOIN EquipItemInfo AS e ON e._ROWID_ = icf.EquipID
-						INNER JOIN HDB_Text AS tn ON tn.[Key] = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
-						LEFT JOIN HDB_Text AS td ON
-							td.[Key] = 'HEROES_ITEM_DESC_' || UPPER(i.ItemClass) AND
-							LENGTH(td.Text) > 0 AND
-							td.Text != '0' AND
-							td.Text != 'Effective equipment for PVP.' AND
-							td.Text != 'pvp\nEquipment' AND
-							td.Text != tn.Text
-						INNER JOIN HDB_ItemIcon AS ico ON
+							s.SetID,
+							MAX(CASE WHEN i.Category = 'HELM' THEN ico._ROWID_ ELSE NULL END) AS IconID,
+							MAX(i.Rarity) AS Rarity,
+							MAX(i.RequiredLevel) AS RequiredLevel,
+							MAX(i.ClassRestriction) AS ClassRestriction,
+							SUM(CASE WHEN e.MATK > 0 THEN e.MATK ELSE e.ATK END) AS ATK,
+							SUM(e.ATK) AS PATK,
+							SUM(e.MATK) AS MATK,
+							SUM(e.ATK_Speed) AS SPEED,
+							SUM(e.Critical) AS CRIT,
+							SUM(e.Balance) AS BAL,
+							SUM(e.HP) AS HP,
+							SUM(e.DEF) AS DEF,
+							SUM(e.Res_Critical) AS CRITRES,
+							SUM(e.STR) AS STR,
+							SUM(e.INT) AS INT,
+							SUM(e.DEX) AS DEX,
+							SUM(e.WILL) AS WILL,
+							SUM(e.STAMINA) AS STAMINA
+						FROM SetInfo AS s
+						INNER JOIN SetItemInfo AS si ON si.SetID = s.SetID
+						INNER JOIN ItemClassInfo AS i ON i.ItemClass = si.BaseItemClass
+						INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+						INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
+						INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
+						LEFT JOIN HDB_Icons AS ico ON
 							ico.Icon = i.Icon AND (
 								ico.IconBG = i.IconBG OR
 								COALESCE(ico.IconBG, i.IconBG) IS NULL
@@ -622,138 +738,184 @@ namespace HeroesDB {
 								ico.Material3 = e.Material3 OR
 								COALESCE(ico.Material3, e.Material3) IS NULL
 							)
-						LEFT JOIN HDB_Text AS trs ON trs.[Key] = 'HEROES_SKILL_NAME_' || UPPER(i.RequiredSkill)
-						LEFT JOIN SkillRankEnum AS sr ON sr.Rank_Num = i.RequiredSkillRank
-						UNION ALL
+						GROUP BY s.SetID
+					) AS ss ON ss.SetID = s.SetID
+					LEFT JOIN (
 						SELECT
-							's' || s._ROWID_ AS ID,
-							s.SetID AS [Key],
-							ss.GroupID,
-							ss.TypeID,
-							ss.CategoryID,
-							ss.IconID,
-							tn.Text AS Name,
-							NULL AS Description,
-							ss.Rarity,
-							NULL AS RequiredSkill,
-							NULL AS RequiredSkillRank,
-							ss.RequiredLevel,
-							ss.ClassRestriction,
-							ss.HDBATK + COALESCE(se.HDBATK, 0) AS HDBATK,
-							ss.ATK + COALESCE(se.ATK, 0) AS ATK,
-							ss.MATK + COALESCE(se.MATK, 0) AS MATK,
-							ss.ATK_Speed,
-							ss.Critical,
-							ss.Balance,
-							ss.HP + COALESCE(se.HP, 0) AS HP,
-							ss.DEF + COALESCE(se.DEF, 0) AS DEF,
-							ss.Res_Critical,
-							ss.STR + COALESCE(se.STR, 0) AS STR,
-							ss.INT + COALESCE(se.INT, 0) AS INT,
-							ss.DEX + COALESCE(se.DEX, 0) AS DEX,
-							ss.WILL + COALESCE(se.WILL, 0) AS WILL,
-							ss.STAMINA
-						FROM SetInfo AS s 
+							se.SetID,
+							SUM(CASE WHEN se.EffectTarget IN ('ATK', 'MATK') THEN se.Amount ELSE 0 END) AS ATK,
+							SUM(CASE WHEN se.EffectTarget = 'ATK' THEN se.Amount ELSE 0 END) AS PATK,
+							SUM(CASE WHEN se.EffectTarget = 'MATK' THEN se.Amount ELSE 0 END) AS MATK,
+							SUM(CASE WHEN se.EffectTarget = 'HP' THEN se.Amount ELSE 0 END) AS HP,
+							SUM(CASE WHEN se.EffectTarget = 'DEF' THEN se.Amount ELSE 0 END) AS DEF,
+							SUM(CASE WHEN se.EffectTarget = 'STR' THEN se.Amount ELSE 0 END) AS STR,
+							SUM(CASE WHEN se.EffectTarget = 'INT' THEN se.Amount ELSE 0 END) AS INT,
+							SUM(CASE WHEN se.EffectTarget = 'DEX' THEN se.Amount ELSE 0 END) AS DEX,
+							SUM(CASE WHEN se.EffectTarget = 'WILL' THEN se.Amount ELSE 0 END) AS WILL
+						FROM SetEffectInfo AS se
 						INNER JOIN (
 							SELECT
-								icf.SetID,
-								ig._ROWID_ AS GroupID,
-								it._ROWID_ AS TypeID,
-								ic._ROWID_ AS CategoryID,
-								MAX(CASE WHEN i.Category = 'HELM' THEN ico._ROWID_ ELSE NULL END) AS IconID,
-								MAX(i.Rarity) AS Rarity,
-								MAX(i.RequiredLevel) AS RequiredLevel,
-								MIN(i.ClassRestriction) AS ClassRestriction,
-								SUM(CASE WHEN e.MATK > 0 THEN e.MATK ELSE e.ATK END) AS HDBATK,
-								SUM(e.ATK) AS ATK,
-								SUM(e.MATK) AS MATK,
-								SUM(e.ATK_Speed) AS ATK_Speed,
-								SUM(e.Critical) AS Critical,
-								SUM(e.Balance) AS Balance,
-								SUM(e.HP) AS HP,
-								SUM(e.DEF) AS DEF,
-								SUM(e.Res_Critical) AS Res_Critical,
-								SUM(e.STR) AS STR,
-								SUM(e.INT) AS INT,
-								SUM(e.DEX) AS DEX,
-								SUM(e.WILL) AS WILL,
-								SUM(e.STAMINA) AS STAMINA
-							FROM (
-								SELECT icf.*
-								FROM HDB_ItemClassification AS icf
-								INNER JOIN (
-									SELECT
-										icf.ItemID,
-										MIN(icf.EquipID) AS EquipID
-									FROM HDB_ItemClassification AS icf
-									GROUP BY icf.ItemID
-								) AS t ON
-									t.ItemID = icf.ItemID AND
-									t.EquipID = icf.EquipID
-								WHERE icf.SetID IS NOT NULL
-							) AS icf
-							INNER JOIN HDB_ItemGroup AS ig ON ig.[Key] = icf.GroupKey
-							INNER JOIN HDB_ItemType AS it ON
-								it.[Key] = icf.TypeKey AND
-								it.GroupKey = icf.GroupKey
-							INNER JOIN HDB_ItemCategory AS ic ON
-								ic.[Key] = icf.CategoryKey AND
-								ic.TypeKey = icf.TypeKey AND
-								ic.GroupKey = icf.GroupKey
-							INNER JOIN ItemClassInfo AS i ON i._ROWID_ = icf.ItemID
-							INNER JOIN EquipItemInfo AS e ON e._ROWID_ = icf.EquipID
-							INNER JOIN HDB_ItemIcon AS ico ON
-								ico.Icon = i.Icon AND (
-									ico.IconBG = i.IconBG OR
-									COALESCE(ico.IconBG, i.IconBG) IS NULL
-								) AND (
-									ico.Material1 = e.Material1 OR
-									COALESCE(ico.Material1, e.Material1) IS NULL
-								) AND (
-									ico.Material2 = e.Material2 OR
-									COALESCE(ico.Material2, e.Material2) IS NULL
-								) AND (
-									ico.Material3 = e.Material3 OR
-									COALESCE(ico.Material3, e.Material3) IS NULL
-								)
-							GROUP BY
-								icf.SetID,
-								ig._ROWID_,
-								it._ROWID_,
-								ic._ROWID_
-						) AS ss ON ss.SetID = s._ROWID_
-						LEFT JOIN (
-							SELECT
 								se.SetID,
-								SUM(CASE WHEN se.EffectTarget IN ('ATK', 'MATK') THEN se.Amount ELSE 0 END) AS HDBATK,
-								SUM(CASE WHEN se.EffectTarget = 'ATK' THEN se.Amount ELSE 0 END) AS ATK,
-								SUM(CASE WHEN se.EffectTarget = 'MATK' THEN se.Amount ELSE 0 END) AS MATK,
-								SUM(CASE WHEN se.EffectTarget = 'HP' THEN se.Amount ELSE 0 END) AS HP,
-								SUM(CASE WHEN se.EffectTarget = 'DEF' THEN se.Amount ELSE 0 END) AS DEF,
-								SUM(CASE WHEN se.EffectTarget = 'STR' THEN se.Amount ELSE 0 END) AS STR,
-								SUM(CASE WHEN se.EffectTarget = 'INT' THEN se.Amount ELSE 0 END) AS INT,
-								SUM(CASE WHEN se.EffectTarget = 'DEX' THEN se.Amount ELSE 0 END) AS DEX,
-								SUM(CASE WHEN se.EffectTarget = 'WILL' THEN se.Amount ELSE 0 END) AS WILL
+								se.EffectTarget,
+								MAX(se.SetCount) AS MaxSetCount
 							FROM SetEffectInfo AS se
-							INNER JOIN (
-								SELECT
-									se.SetID,
-									se.EffectTarget,
-									MAX(se.SetCount) AS MaxSetCount
-								FROM SetEffectInfo AS se
-								GROUP BY
-									se.SetID,
-									se.EffectTarget
-							) AS sem ON
-								sem.SetID = se.SetID AND
-								sem.EffectTarget = se.EffectTarget AND
-								sem.MaxSetCount = se.SetCount
-							GROUP BY se.SetID
-						) AS se ON se.SetID = s.SetID
-						INNER JOIN HDB_Text AS tn ON tn.[Key] = 'HEROES_ITEM_SETITEM_NAME_' || UPPER(s.SetID);
+							GROUP BY
+								se.SetID,
+								se.EffectTarget
+						) AS sem ON
+							sem.SetID = se.SetID AND
+							sem.EffectTarget = se.EffectTarget AND
+							sem.MaxSetCount = se.SetCount
+						GROUP BY se.SetID
+					) AS se ON se.SetID = s.SetID;
 				";
 				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_SetCategories;
+					CREATE TABLE HDB_SetCategories (
+						SetKey NVARCHAR NOT NULL,
+						CategoryKey NVARCHAR,
+						CONSTRAINT [unique] UNIQUE(SetKey, CategoryKey)
+					);
+					INSERT INTO HDB_SetCategories
+					SELECT
+						s.Key AS SetKey,
+						c.CategoryKey
+					FROM HDB_Classification AS c
+					INNER JOIN HDB_Sets AS s ON s.ID = c.ObjectID
+					WHERE c.ObjectType = 'set';
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_SetParts;
+					CREATE TABLE HDB_SetParts (
+						SetKey NVARCHAR NOT NULL,
+						EquipKey NVARCHAR,
+						EquipName NVARCHAR NOT NULL,
+						Base INT NOT NULL,
+						[Order] INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(SetKey, EquipKey, EquipName)
+					);
+					INSERT INTO HDB_SetParts
+					SELECT
+						s.Key AS SetKey,
+						e.Key AS EquipKey,
+						tn.Text AS EquipName,
+						CASE WHEN sibi.SetID IS NULL THEN 0 ELSE 1 END AS Base,
+						CASE i.Category WHEN 'WEAPON' THEN 1 WHEN 'HELM' THEN 2 WHEN 'TUNIC' THEN 3 WHEN 'PANTS' THEN 4 WHEN 'GLOVES' THEN 5 WHEN 'BOOTS' THEN 6 ELSE 7 END AS [Order]
+					FROM HDB_Sets AS s
+					INNER JOIN (
+						SELECT
+							si.SetID,
+							si.ItemClass
+						FROM SetItemInfo AS si
+						UNION
+						SELECT
+							si.SetID,
+							si.BaseItemClass
+						FROM SetItemInfo AS si
+					) AS siai ON LOWER(siai.SetID) = s.Key
+					LEFT JOIN (
+						SELECT DISTINCT
+							si.SetID,
+							si.BaseItemClass
+						FROM SetItemInfo AS si
+					) AS sibi ON
+						sibi.SetID = siai.SetID AND
+						sibi.BaseItemClass = siai.ItemClass
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = siai.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+					LEFT JOIN HDB_Equips AS e ON e.Key = i.ItemClass
+					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass);
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_SetSkills;
+					CREATE TABLE HDB_SetSkills (
+						SetKey NVARCHAR NOT NULL,
+						SkillName NVARCHAR NOT NULL,
+						SkillRank NVARCHAR NOT NULL,
+						CONSTRAINT [unique] UNIQUE(SetKey, SkillName)
+					);
+					INSERT INTO HDB_SetSkills
+					SELECT
+						s.Key AS SetKey,
+						trs.Text AS SkillName,
+						sr.Rank_String AS SkillRank
+					FROM (
+						SELECT
+							s.Key,
+							i.RequiredSkill,
+							MAX(i.RequiredSkillRank) AS RequiredSkillRank
+						FROM HDB_Sets AS s
+						INNER JOIN SetItemInfo AS si ON LOWER(si.SetID) = s.Key
+						INNER JOIN ItemClassInfo AS i ON i.ItemClass = si.BaseItemClass
+						INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+						GROUP BY
+							s.Key,
+							i.RequiredSkill
+					) AS s
+					INNER JOIN HDB_Text AS trs ON trs.Key = 'HEROES_SKILL_NAME_' || UPPER(s.RequiredSkill)
+					INNER JOIN SkillRankEnum AS sr ON sr.Rank_Num = s.RequiredSkillRank;
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_SetEffects;
+					CREATE TABLE HDB_SetEffects (
+						SetKey NVARCHAR NOT NULL,
+						PartCount INT NOT NULL,
+						ATK INT NOT NULL,
+						PATK INT NOT NULL,
+						MATK INT NOT NULL,
+						HP INT NOT NULL,
+						DEF INT NOT NULL,
+						STR INT NOT NULL,
+						INT INT NOT NULL,
+						DEX INT NOT NULL,
+						WILL INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(SetKey, PartCount)
+					);
+					INSERT INTO HDB_SetEffects
+					SELECT
+						s.Key AS SetKey,
+						se.SetCount AS PartCount,
+						SUM(CASE WHEN se.EffectTarget IN ('ATK', 'MATK') THEN se.Amount ELSE 0 END) AS ATK,
+						SUM(CASE WHEN se.EffectTarget = 'ATK' THEN se.Amount ELSE 0 END) AS PATK,
+						SUM(CASE WHEN se.EffectTarget = 'MATK' THEN se.Amount ELSE 0 END) AS MATK,
+						SUM(CASE WHEN se.EffectTarget = 'HP' THEN se.Amount ELSE 0 END) AS HP,
+						SUM(CASE WHEN se.EffectTarget = 'DEF' THEN se.Amount ELSE 0 END) AS DEF,
+						SUM(CASE WHEN se.EffectTarget = 'STR' THEN se.Amount ELSE 0 END) AS STR,
+						SUM(CASE WHEN se.EffectTarget = 'INT' THEN se.Amount ELSE 0 END) AS INT,
+						SUM(CASE WHEN se.EffectTarget = 'DEX' THEN se.Amount ELSE 0 END) AS DEX,
+						SUM(CASE WHEN se.EffectTarget = 'WILL' THEN se.Amount ELSE 0 END) AS WILL
+					FROM HDB_Sets AS s
+					INNER JOIN SetEffectInfo AS se ON LOWER(se.SetID) = s.Key
+					GROUP BY
+						s.Key,
+						se.SetCount;
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					UPDATE HDB_Equips
+					SET
+						SetKey = (
+							SELECT sp.SetKey
+							FROM HDB_SetParts AS sp
+							WHERE sp.EquipKey = HDB_Equips.Key
+						);
+					UPDATE HDB_Equips
+					SET
+						SetName = (
+							SELECT s.Name
+							FROM HDB_Sets AS s
+							WHERE s.Key = HDB_Equips.SetKey
+						);
+				";
+				command.ExecuteNonQuery();
+				transaction.Commit();
 			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
 		}
 
 	}

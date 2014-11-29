@@ -1,43 +1,46 @@
 ﻿
+using System.Diagnostics;
 using System;
 
 namespace HeroesDB {
 
 	class Program {
 
-		public static void Main(string[] args) {
-			var databaseFile = @"D:\HeroesDB\hfs\heroes.db3.comp";
-			var ext = new Extractor();
-			var stp = new Setuper(databaseFile);
-			//Console.WriteLine("ImportText");
-			//stp.ImportText(@"D:\HeroesDB\hfs\heroes_text_english_eu.txt");
-			//Console.WriteLine("SetCharacters");
-			//stp.SetCharacters();
-			//Console.WriteLine("SetFeaturedItemClasses");
-			//stp.SetFeaturedItemClasses();
-			//Console.WriteLine("SetFeaturedEquipItems");
-			//stp.SetFeaturedEquipItems();
-			//Console.WriteLine("SetItemStats");
-			//stp.SetItemStats();
-			Console.WriteLine("SetClassification");
-			stp.SetClassification();
-			//Console.WriteLine("SetIcons");
-			//stp.SetIcons();
-			Console.WriteLine("SetItems");
-			stp.SetItems();
-			var exp = new Exporter(databaseFile, @"D:\HeroesDB\www\data\");
-			//Console.WriteLine("ExportCharacters");
-			//exp.ExportCharacters();
-			//Console.WriteLine("ExportItemStats");
-			//exp.ExportItemStats();
-			//Console.WriteLine("ExportItemGroups");
-			//exp.ExportItemGroups();
-			Console.WriteLine("ExportItems");
-			exp.ExportItems();
-			//Console.WriteLine("ExportIcons");
-			//exp.ExportIcons(@"D:\HeroesDB\hfs\icons");
-			Console.WriteLine("DONE!");
-			Console.ReadKey(true);
+		const String DatabaseFile = @"D:\HeroesDB\hfs\heroes.db3.comp";
+
+		public static void Main(String[] args) {
+			Debug.Listeners.Add(new TextWriterTraceListener(Console.Out));
+			Debug.WriteLine("Main() {");
+			Debug.Indent();
+			try {
+				var ext = new Extractor();
+				var stp = new Setuper(DatabaseFile);
+				stp.ImportText(@"D:\HeroesDB\hfs\heroes_text_english_eu.txt");
+				stp.SetCharacters();
+				stp.SetFeaturedItems();
+				stp.SetFeaturedEquips();
+				stp.SetClassification();
+				stp.SetIcons(@"D:\HeroesDB\hfs\icons");
+				stp.SetEquips();
+				stp.SetSets();
+				var exp = new Exporter(DatabaseFile, @"D:\HeroesDB\www\data\");
+				exp.ExportCharacters();
+				exp.ExportClassification();
+				exp.ExportIcons(@"D:\HeroesDB\hfs\icons");
+				exp.ExportEquips();
+				exp.ExportSets();
+			}
+			catch (Exception exception) {
+				Debug.WriteLine(exception.Source);
+				Debug.WriteLine(exception.Message);
+				Debug.WriteLine(exception.StackTrace);
+				throw exception;
+			}
+			finally {
+				Debug.Unindent();
+				Debug.WriteLine("}");
+				Console.ReadKey(true);
+			}
 		}
 
 	}
