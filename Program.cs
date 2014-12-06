@@ -19,14 +19,17 @@ namespace HeroesDB {
 				stp.SetCharacters();
 				stp.SetFeaturedItems();
 				stp.SetFeaturedEquips();
+				stp.SetFeaturedRecipes();
 				stp.SetClassification();
 				stp.SetIcons(@"D:\HeroesDB\hfs\icons");
+				stp.SetMats();
 				stp.SetEquips();
 				stp.SetSets();
 				var exp = new Exporter(DatabaseFile, @"D:\HeroesDB\www\data\");
 				exp.ExportCharacters();
 				exp.ExportClassification();
 				exp.ExportIcons(@"D:\HeroesDB\hfs\icons");
+				exp.ExportMats();
 				exp.ExportEquips();
 				exp.ExportSets();
 			}

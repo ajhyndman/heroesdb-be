@@ -292,8 +292,8 @@ namespace HeroesDB {
 					FROM HDB_Icons AS i
 					LEFT JOIN HDB_Equips AS e ON e.IconID = i._ROWID_
 					LEFT JOIN HDB_Sets AS s ON s.IconID = i._ROWID_
-					WHERE
-						COALESCE(e.ID, s.ID) IS NOT NULL;
+					LEFT JOIN HDB_Mats AS m ON m.IconID = i._ROWID_
+					WHERE COALESCE(e.ID, s.ID, m.ID) IS NOT NULL;
 				";
 				var reader = command.ExecuteReader();
 				while (reader.Read()) {
@@ -344,6 +344,50 @@ namespace HeroesDB {
 			Debug.WriteLine("}");
 		}
 
+		public void ExportMats() {
+			Debug.WriteLine("ExportMats() {");
+			Debug.Indent();
+			var path = Path.Combine(this.outputPath, "objects", "mats");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			var serializer = new JavaScriptSerializer();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						m.Key AS key,
+						m.IconID AS iconID,
+						m.Name AS name,
+						m.Description AS description,
+						m.Rarity AS rarity
+					FROM HDB_Mats AS m;
+				";
+				var reader = command.ExecuteReader();
+				while (reader.Read()) {
+					Debug.Write(".");
+					var mat = new Dictionary<String, Object>();
+					for (var i = 0; i < reader.FieldCount; i += 1) {
+						if (reader.GetName(i) == "description") {
+							var description = this.removeFormattingTags(Convert.ToString(reader["description"]));
+							mat.Add(reader.GetName(i), description);
+						}
+						else {
+							mat.Add(reader.GetName(i), reader[i]);
+						}
+					}
+					var json = serializer.Serialize(mat);
+					path = Path.Combine(this.outputPath, "objects", "mats");
+					path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(reader["key"]), "json"));
+					File.WriteAllText(path, json);
+				}
+				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
 		public void ExportEquips() {
 			Debug.WriteLine("ExportEquips() {");
 			Debug.Indent();
@@ -356,6 +400,88 @@ namespace HeroesDB {
 			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						ers.EquipKey AS equipKey,
+						ers.ShopKey AS shopKey,
+						ers.ShopName AS ShopName
+					FROM HDB_EquipRecipeShops AS ers
+					ORDER BY
+						ers.EquipKey,
+						ers.ShopName;
+				";
+				var reader = command.ExecuteReader();
+				var recipeShops = new Dictionary<String, List<Dictionary<String, Object>>>();
+				while (reader.Read()) {
+					var equipKey = Convert.ToString(reader["equipKey"]);
+					if (!recipeShops.ContainsKey(equipKey)) {
+						Debug.Write(".");
+						recipeShops.Add(equipKey, new List<Dictionary<String, Object>>());
+					}
+					recipeShops[equipKey].Add(new Dictionary<String, Object>() {
+						{ "key", reader["shopKey"] },
+						{ "name", reader["ShopName"] }
+					});
+				}
+				Debug.WriteLine("");
+				reader.Close();
+				command.CommandText = @"
+					SELECT
+						er.EquipKey AS equipKey,
+						er.Type AS type,
+						m.Key AS matKey,
+						m.IconID AS matIconID,
+						m.Name AS matName,
+						m.Description AS matDescription,
+						m.Rarity AS matRarity,
+						er.MatCount AS matCount,
+						er.AppearQuestName AS appearQuestName,
+						er.ExpertiseName AS expertiseName,
+						er.ExpertiseExperienceRequired AS expertiseExperienceRequired
+					FROM HDB_EquipRecipes AS er
+					INNER JOIN HDB_Mats AS m ON m.Key = er.MatKey
+					ORDER BY
+						er.EquipKey,
+						CASE WHEN m.Key = 'gold' THEN 3 WHEN m.key LIKE 'cloth_lvl_' OR m.key LIKE 'skin_lvl_' OR m.key LIKE 'iron_ore_lvl_' THEN 2 ELSE 1 END,
+						m.Rarity DESC,
+						m.Name;
+				";
+				reader = command.ExecuteReader();
+				var recipes = new Dictionary<String, Dictionary<String, Dictionary<String, Object>>>();
+				while (reader.Read()) {
+					var equipKey = Convert.ToString(reader["equipKey"]);
+					var type = Convert.ToString(reader["type"]);
+					if (!recipes.ContainsKey(equipKey)) {
+						Debug.Write(".");
+						recipes.Add(equipKey, new Dictionary<String, Dictionary<String, Object>>());
+					}
+					if (!recipes[equipKey].ContainsKey(type)) {
+						recipes[equipKey].Add(type, new Dictionary<String, Object>());
+						if (reader["appearQuestName"] != DBNull.Value) {
+							recipes[equipKey][type].Add("appearQuestName", reader["appearQuestName"]);
+						}
+						else if (reader["expertiseName"] != DBNull.Value) {
+							recipes[equipKey][type].Add("expertiseName", reader["expertiseName"]);
+							recipes[equipKey][type].Add("expertiseExperienceRequired", reader["expertiseExperienceRequired"]);
+						}
+						if (type == "npc" && recipeShops.ContainsKey(equipKey)) {
+							recipes[equipKey][type].Add("shops", recipeShops[equipKey]);
+						}
+					}
+					if (!recipes[equipKey][type].ContainsKey("mats")) {
+						recipes[equipKey][type].Add("mats", new List<Dictionary<String, Object>>());
+					}
+					((List<Dictionary<String, Object>>)recipes[equipKey][type]["mats"]).Add(new Dictionary<String, Object>() {
+						{ "key", reader["matKey"] },
+						{ "iconID", reader["matIconID"] },
+						{ "name", reader["matName"] },
+						{ "description", this.removeFormattingTags(Convert.ToString(reader["matDescription"])) },
+						{ "rarity", reader["matRarity"] },
+						{ "count", reader["matCount"] }
+					});
+				}
+				Debug.WriteLine("");
+				reader.Close();
 				command.CommandText = @"
 					SELECT
 						e.Key AS key,
@@ -393,7 +519,7 @@ namespace HeroesDB {
 						e.RequiredLevel DESC,
 						e.Name;
 				";
-				var reader = command.ExecuteReader();
+				reader = command.ExecuteReader();
 				var table = new DataTable();
 				table.Load(reader);
 				var equips = new List<Dictionary<String, Object>>();
@@ -468,6 +594,9 @@ namespace HeroesDB {
 								equip.Add(column.ColumnName, row[column.ColumnName]);
 								break;
 						}
+					}
+					if (recipes.ContainsKey(Convert.ToString(row["key"]))) {
+						equip.Add("recipes", recipes[Convert.ToString(row["key"])]);
 					}
 					var json = serializer.Serialize(equip);
 					path = Path.Combine(this.outputPath, "objects", "equips");

@@ -42,34 +42,36 @@ namespace HeroesDB {
 			}
 		}
 
-		private Boolean isFeatured(String itemFeatures) {
+		private Boolean isFeatured(String features) {
 			if (this.enabledFeatures == null) {
 				this.loadFeatures();
 			}
-			var test = new Regex(@"^(?<item>((!)?\w+)|(\|\|)|(&&))+$");
-			var match = test.Match(itemFeatures);
+			var test = new Regex(@"^(?<item>\s*(((!)?\w+)|(\|\|)|(&&))\s*)+$");
+			var match = test.Match(features.Trim());
 			var captures = match.Groups["item"].Captures;
-			var featuredItem = true;
+			var featured = true;
 			for (var i = 0; i < captures.Count; i += 1) {
-				if (captures[i].Value == "&&" || captures[i].Value == "||") {
+				var item = captures[i].Value.Trim();
+				if (item == "&&" || item == "||") {
 					continue;
 				}
-				var disabledFeature = captures[i].Value.StartsWith("!", StringComparison.InvariantCulture);
-				var existingFeature = this.enabledFeatures.Contains(captures[i].Value.Replace("!", ""));
+				var disabledFeature = item.StartsWith("!", StringComparison.InvariantCulture);
+				var existingFeature = this.enabledFeatures.Contains(item.Replace("!", ""));
 				var enabledFeature = (!disabledFeature && existingFeature) || (disabledFeature && !existingFeature);
 				if (i == 0) {
-					featuredItem = enabledFeature;
+					featured = enabledFeature;
 				}
 				else {
-					if (captures[i - 1].Value == "||") {
-						featuredItem = featuredItem || enabledFeature;
+					var previousItem = captures[i - 1].Value.Trim();
+					if (previousItem == "||") {
+						featured = featured || enabledFeature;
 					}
-					else if (captures[i - 1].Value == "&&") {
-						featuredItem = featuredItem && enabledFeature;
+					else if (previousItem == "&&") {
+						featured = featured && enabledFeature;
 					}
 				}
 			}
-			return featuredItem;
+			return featured;
 		}
 
 		public void ImportText(String textFile) {
@@ -154,18 +156,13 @@ namespace HeroesDB {
 					CREATE TABLE HDB_FeaturedItems (
 						ItemID INT NOT NULL UNIQUE
 					);
-					INSERT INTO HDB_FeaturedItems
-					SELECT i._ROWID_ AS ItemID
-					FROM ItemClassInfo AS i
-					WHERE i.Feature IS NULL;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
 					SELECT
 						i._ROWID_ AS ItemID,
 						i.Feature
-					FROM ItemClassInfo AS i
-					WHERE i.Feature IS NOT NULL;
+					FROM ItemClassInfo AS i;
 				";
 				var reader = command.ExecuteReader();
 				var featuredItems = new List<Int32>();
@@ -200,12 +197,6 @@ namespace HeroesDB {
 					CREATE TABLE HDB_FeaturedEquips (
 						EquipID INT NOT NULL UNIQUE
 					);
-					INSERT INTO HDB_FeaturedEquips
-					SELECT e._ROWID_ AS EquipID
-					FROM EquipItemInfo AS e
-					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
-					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_ 
-					WHERE e.Feature IS NULL;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -214,8 +205,7 @@ namespace HeroesDB {
 						e.Feature
 					FROM EquipItemInfo AS e
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
-					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_ 
-					WHERE e.Feature IS NOT NULL;
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_;
 				";
 				var reader = command.ExecuteReader();
 				var featuredItems = new List<Int32>();
@@ -229,6 +219,90 @@ namespace HeroesDB {
 				command.Parameters.Add("@EquipID", DbType.Int32);
 				foreach (var id in featuredItems) {
 					command.Parameters["@EquipID"].Value = id;
+					command.ExecuteNonQuery();
+				}
+				transaction.Commit();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void SetFeaturedRecipes() {
+			Debug.WriteLine("SetFeaturedRecipes() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var transaction = connection.BeginTransaction();
+				var command = connection.CreateCommand();
+				command.Transaction = transaction;
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_FeaturedRecipes;
+					CREATE TABLE HDB_FeaturedRecipes (
+						RecipeType NVARCHAR NOT NULL,
+						RecipeKey NVARCHAR NOT NULL,
+						RecipeFeature NVARCHAR,
+						CONSTRAINT [unique] UNIQUE(RecipeType, RecipeKey, RecipeFeature)
+					);
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					SELECT
+						t.RecipeType,
+						t.RecipeKey,
+						t.RecipeFeature
+					FROM (
+						/*
+						SELECT
+							'npc' AS RecipeType,
+							LOWER(r.RecipeID) AS RecipeKey,
+							r.ItemClass,
+							r.Feature AS RecipeFeature
+						FROM RecipeMaterialInfo AS r
+						WHERE r.Type = 0
+						*/
+						SELECT DISTINCT
+							'npc' AS RecipeType,
+							LOWER(cs.RecipeID) AS RecipeKey,
+							rmr.ItemClass,
+							cs.Feature AS RecipeFeature
+						FROM CraftShopInfo AS cs
+						INNER JOIN RecipeMaterialInfo AS rmr ON
+							rmr.Type = 0 AND
+							rmr.RecipeID = cs.RecipeID
+						UNION ALL
+						SELECT
+							'pc' AS RecipeType,
+							LOWER(mr.RecipeID) AS RecipeKey,
+							mm.ItemClass,
+							mr.Feature AS RecipeFeature
+						FROM ManufactureRecipeInfo AS mr
+						INNER JOIN ManufactureMaterialInfo AS mm ON
+							mm.RecipeID = mr.RecipeID AND
+							mm.Type = 0
+					) AS t
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = t.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_;
+				";
+				var reader = command.ExecuteReader();
+				var featuredRecipes = new List<Dictionary<String, Object>>();
+				while (reader.Read()) {
+					if (this.isFeatured(Convert.ToString(reader["RecipeFeature"]))) {
+						featuredRecipes.Add(new Dictionary<String, Object>() {
+							{ "RecipeType", reader["RecipeType"] },
+							{ "RecipeKey", reader["RecipeKey"] },
+							{ "RecipeFeature", reader["RecipeFeature"] },
+						});
+					}
+				}
+				reader.Close();
+				command.CommandText = "INSERT INTO HDB_FeaturedRecipes VALUES (@RecipeType, @RecipeKey, @RecipeFeature);";
+				command.Parameters.Add("@RecipeType", DbType.String);
+				command.Parameters.Add("@RecipeKey", DbType.String);
+				command.Parameters.Add("@RecipeFeature", DbType.String);
+				foreach (var recipe in featuredRecipes) {
+					command.Parameters["@RecipeType"].Value = recipe["RecipeType"];
+					command.Parameters["@RecipeKey"].Value = recipe["RecipeKey"];
+					command.Parameters["@RecipeFeature"].Value = recipe["RecipeFeature"];
 					command.ExecuteNonQuery();
 				}
 				transaction.Commit();
@@ -410,6 +484,62 @@ namespace HeroesDB {
 						c.ObjectType = 'set' AND
 						c.ObjectID = s._ROWID_
 					WHERE c.ObjectID IS NULL;
+
+					INSERT INTO HDB_Classification
+					SELECT
+						i._ROWID_ AS ObjectID,
+						'mat' AS ObjectType,
+						NULL AS GroupKey,
+						NULL AS GroupName,
+						NULL AS GroupOrder,
+						NULL AS TypeKey,
+						NULL AS TypeName,
+						NULL AS TypeOrder,
+						NULL AS TypePrimaryProperties,
+						NULL AS CategoryKey,
+						NULL AS CategoryName,
+						NULL AS CategoryOrder
+					FROM (
+						/*
+						SELECT rm.ItemClass
+						FROM RecipeMaterialInfo AS rm
+						INNER JOIN RecipeMaterialInfo AS r ON
+							r.Type = 0 AND
+							r.RecipeID = rm.RecipeID AND (
+								r.Feature = rm.Feature OR
+								COALESCE(r.Feature, rm.Feature) IS NULL
+							)
+						INNER JOIN HDB_FeaturedRecipes AS fr ON
+							fr.RecipeType = 'npc' AND
+							fr.RecipeKey = LOWER(r.RecipeID) AND (
+								fr.RecipeFeature = r.Feature OR
+								COALESCE(fr.RecipeFeature, r.Feature) IS NULL
+							)
+						WHERE rm.Type = 1
+						*/
+						SELECT rm.ItemClass
+						FROM RecipeMaterialInfo AS rm
+						INNER JOIN HDB_FeaturedRecipes AS fr ON
+							fr.RecipeType = 'npc' AND
+							fr.RecipeKey = LOWER(rm.RecipeID) AND (
+								fr.RecipeFeature = rm.Feature OR
+								COALESCE(fr.RecipeFeature, rm.Feature) IS NULL
+							)
+						WHERE rm.Type = 1
+						UNION
+						SELECT mm.ItemClass
+						FROM ManufactureMaterialInfo AS mm
+						INNER JOIN ManufactureRecipeInfo AS mr ON mr.RecipeID = mm.RecipeID
+						INNER JOIN HDB_FeaturedRecipes AS fr ON
+							fr.RecipeType = 'pc' AND
+							fr.RecipeKey = LOWER(mr.RecipeID) AND ( 
+								fr.RecipeFeature = mr.Feature OR
+								COALESCE(fr.RecipeFeature, mr.Feature) IS NULL
+							)
+						WHERE mm.Type = 1
+					) AS m
+					INNER JOIN ItemClassInfo AS i ON i.ItemClass = m.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -427,6 +557,8 @@ namespace HeroesDB {
 								i.ExpireIn IS NOT NULL OR
 								i.ItemClass LIKE '%_limitless' OR
 								i.ItemClass LIKE '%_comback' OR
+								i.ItemClass LIKE '%_comback2' OR
+								i.ItemClass LIKE '%_newserver' OR
 								i.ItemClass LIKE '%_provide' OR
 								i.ItemClass LIKE '%_fruitgift' OR
 								i.ItemClass LIKE '%_gift' OR
@@ -515,12 +647,67 @@ namespace HeroesDB {
 			Debug.WriteLine("}");
 		}
 
+		public void SetMats() {
+			Debug.WriteLine("SetMats() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_Mats;
+					CREATE TABLE HDB_Mats (
+						ID INT PRIMARY KEY,
+						Key NVARCHAR NOT NULL,
+						IconID INT,
+						Name NVARCHAR NOT NULL,
+						Description NVARCHAR,
+						Rarity INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(Key)
+					);
+					INSERT INTO HDB_Mats
+					SELECT
+						c.ObjectID AS ID,
+						LOWER(i.ItemClass) AS Key,
+						ico.ID AS IconID,
+						tn.Text AS Name,
+						td.Text AS Description,
+						i.Rarity
+					FROM HDB_Classification AS c
+					INNER JOIN ItemClassInfo AS i ON i._ROWID_ = c.ObjectID
+					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
+					LEFT JOIN HDB_Text AS td ON
+						td.Key = 'HEROES_ITEM_DESC_' || UPPER(i.ItemClass) AND
+						LENGTH(td.Text) > 0
+					LEFT JOIN (
+						SELECT
+							ico.Icon,
+							ico.IconBG,
+							MIN(ico._ROWID_) AS ID
+						FROM HDB_Icons AS ico
+						GROUP BY
+							ico.Icon,
+							ico.IconBG
+					) ico ON
+						ico.Icon = i.Icon AND (
+							ico.IconBG = i.IconBG OR
+							COALESCE(ico.IconBG, i.IconBG) IS NULL
+						)
+					WHERE c.ObjectType = 'mat';
+				";
+				command.ExecuteNonQuery();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
 		public void SetEquips() {
 			Debug.WriteLine("SetEquips() {");
 			Debug.Indent();
 			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
+				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
+				command.Transaction = transaction;
 				command.CommandText = @"
 					DROP TABLE IF EXISTS HDB_Equips;
 					CREATE TABLE HDB_Equips (
@@ -621,6 +808,147 @@ namespace HeroesDB {
 						c.ObjectID != 3301;
 				";
 				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EquipRecipes;
+					CREATE TABLE HDB_EquipRecipes (
+						EquipKey NVARCHAR NOT NULL,
+						Type NVARCHAR NOT NULL,
+						MatKey NVARCHAR NOT NULL,
+						MatCount INT NOT NULL,
+						AppearQuestName NVARCHAR,
+						ExpertiseName NVARCHAR,
+						ExpertiseExperienceRequired INT,
+						CONSTRAINT [unique] UNIQUE(EquipKey, Type, MatKey)
+					);
+					/*
+					SELECT
+						e.Key AS EquipKey,
+						fr.RecipeType AS Type,
+						m.Key AS MatKey,
+						rm.Num AS MatCount,
+						NULL AS ExpertiseName,
+						NULL AS ExpertiseExperienceRequired
+					FROM HDB_Equips AS e
+					INNER JOIN RecipeMaterialInfo AS r ON
+						r.Type = 0 AND
+						LOWER(r.ItemClass) = e.Key
+					INNER JOIN HDB_FeaturedRecipes AS fr ON
+						fr.RecipeType = 'npc' AND
+						fr.RecipeKey = LOWER(r.RecipeID) AND (
+							fr.RecipeFeature = r.Feature OR
+							COALESCE(fr.RecipeFeature, r.Feature) IS NULL
+						)
+					INNER JOIN RecipeMaterialInfo AS rm ON
+						rm.Type = 1 AND
+						rm.RecipeID = r.RecipeID AND (
+							rm.Feature = r.Feature OR
+							COALESCE(rm.Feature, r.Feature) IS NULL
+						)
+					LEFT JOIN HDB_Mats AS m ON m.Key = LOWER(rm.ItemClass)
+					*/
+					INSERT INTO HDB_EquipRecipes
+					SELECT
+						e.Key AS EquipKey,
+						fr.RecipeType AS Type,
+						m.Key AS MatKey,
+						rm.Num AS MatCount,
+						t.Text AS AppearQuestName,
+						NULL AS ExpertiseName,
+						NULL AS ExpertiseExperienceRequired
+					FROM HDB_Equips AS e
+					INNER JOIN RecipeMaterialInfo AS rmr ON
+						rmr.Type = 0 AND
+						LOWER(rmr.ItemClass) = e.Key
+					INNER JOIN HDB_FeaturedRecipes AS fr ON
+						fr.RecipeType = 'npc' AND
+						fr.RecipeKey = LOWER(rmr.RecipeID) AND (
+							fr.RecipeFeature = rmr.Feature OR
+							COALESCE(fr.RecipeFeature, rmr.Feature) IS NULL
+						)
+					INNER JOIN RecipeMaterialInfo AS rm ON
+						rm.Type = 1 AND
+						rm.RecipeID = rmr.RecipeID AND (
+							rm.Feature = rmr.Feature OR
+							COALESCE(rm.Feature, rmr.Feature) IS NULL
+						)
+					LEFT JOIN HDB_Mats AS m ON m.Key = LOWER(rm.ItemClass)
+					INNER JOIN (
+						SELECT DISTINCT
+							cs.RecipeID,
+							cs.Feature,
+							cs.AppearQuestID
+						FROM CraftShopInfo AS cs
+					) AS cs ON
+						cs.RecipeID = rmr.RecipeID AND (
+							cs.Feature = rmr.Feature OR
+							COALESCE(cs.Feature, rmr.Feature) IS NULL
+						)
+					LEFT JOIN HDB_Text AS t ON t.Key = 'HEROES_QUEST_TITLE_' || UPPER(cs.AppearQuestID);
+					INSERT INTO HDB_EquipRecipes
+					SELECT
+						e.Key AS EquipKey,
+						fr.RecipeType AS Type,
+						m.Key AS MatKey,
+						mm.Num AS MatCount,
+						NULL AS AppearQuestName,
+						t.Text AS ExpertiseName,
+						mr.ExperienceRequired AS ExpertiseExperienceRequired
+					FROM HDB_Equips AS e
+					INNER JOIN ManufactureMaterialInfo AS mmr ON
+						mmr.Type = 0 AND
+						LOWER(mmr.ItemClass) = e.Key
+					INNER JOIN ManufactureRecipeInfo AS mr ON mr.RecipeID = mmr.RecipeID
+					INNER JOIN HDB_FeaturedRecipes AS fr ON
+						fr.RecipeType = 'pc' AND
+						fr.RecipeKey = LOWER(mr.RecipeID) AND (
+							fr.RecipeFeature = mr.Feature OR
+							COALESCE(fr.RecipeFeature, mr.Feature) IS NULL
+						)
+					INNER JOIN ManufactureMaterialInfo AS mm ON
+						mm.Type = 1 AND
+						mm.RecipeID = mr.RecipeID
+					LEFT JOIN HDB_Mats AS m ON m.Key = LOWER(mm.ItemClass)
+					LEFT JOIN HDB_Text AS t ON t.Key = 'GAMEUI_HEROES_MANUFACTURE_CRAFTNAME_' || UPPER(mr.ManufactureID);
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EquipRecipeShops;
+					CREATE TABLE HDB_EquipRecipeShops (
+						EquipKey NVARCHAR NOT NULL,
+						ShopKey NVARCHAR NOT NULL,
+						ShopName NVARCHAR NOT NULL,
+						CONSTRAINT [unique] UNIQUE(EquipKey, ShopKey)
+					);
+					INSERT INTO HDB_EquipRecipeShops
+					SELECT
+						t.EquipKey,
+						t.ShopKey,
+						tn.Text AS ShopName
+					FROM (
+						SELECT
+							e.Key AS EquipKey,
+							LOWER(REPLACE(REPLACE(REPLACE(REPLACE(cs.ShopID, '_ACCESSORY_Craft', ''), '_ARMOR_Craft', ''), '_WEAPON_Craft', ''), '_Craft', '')) AS ShopKey
+						FROM HDB_Equips AS e
+						INNER JOIN RecipeMaterialInfo AS rmr ON
+							rmr.Type = 0 AND
+							LOWER(rmr.ItemClass) = e.Key
+						INNER JOIN HDB_FeaturedRecipes AS fr ON
+							fr.RecipeType = 'npc' AND
+							fr.RecipeKey = LOWER(rmr.RecipeID) AND (
+								fr.RecipeFeature = rmr.Feature OR
+								COALESCE(fr.RecipeFeature, rmr.Feature) IS NULL
+							)
+						INNER JOIN CraftShopInfo AS cs ON
+							cs.RecipeID = rmr.RecipeID AND (
+								cs.Feature = rmr.Feature OR (
+									COALESCE(cs.Feature, rmr.Feature) IS NULL
+								)
+							)
+					) AS t
+					LEFT JOIN HDB_Text AS tn ON tn.Key = 'HEROES_NPC_' || UPPER(t.ShopKey);
+				";
+				command.ExecuteNonQuery();
+				transaction.Commit();
 			}
 			Debug.Unindent();
 			Debug.WriteLine("}");
