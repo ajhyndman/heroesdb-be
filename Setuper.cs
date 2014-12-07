@@ -1119,7 +1119,9 @@ namespace HeroesDB {
 					CREATE TABLE HDB_SetParts (
 						SetKey NVARCHAR NOT NULL,
 						EquipKey NVARCHAR,
+						EquipIconID INT,
 						EquipName NVARCHAR NOT NULL,
+						EquipRarity INT NOT NULL,
 						Base INT NOT NULL,
 						[Order] INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(SetKey, EquipKey, EquipName)
@@ -1128,7 +1130,9 @@ namespace HeroesDB {
 					SELECT
 						s.Key AS SetKey,
 						e.Key AS EquipKey,
+						e.IconID AS EquipIconID,
 						tn.Text AS EquipName,
+						i.Rarity AS EquipRarity,
 						CASE WHEN sibi.SetID IS NULL THEN 0 ELSE 1 END AS Base,
 						CASE i.Category WHEN 'WEAPON' THEN 1 WHEN 'HELM' THEN 2 WHEN 'TUNIC' THEN 3 WHEN 'PANTS' THEN 4 WHEN 'GLOVES' THEN 5 WHEN 'BOOTS' THEN 6 ELSE 7 END AS [Order]
 					FROM HDB_Sets AS s

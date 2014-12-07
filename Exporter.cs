@@ -649,7 +649,9 @@ namespace HeroesDB {
 						sp.SetKey AS setKey,
 						s.Name AS setName,
 						sp.EquipKey AS equipKey,
+						sp.EquipIconID AS equipIconID,
 						sp.EquipName AS equipName,
+						sp.EquipRarity AS equipRarity,
 						sp.Base AS base
 					FROM HDB_SetParts AS sp
 					INNER JOIN HDB_Sets AS s ON s.Key = sp.SetKey
@@ -667,16 +669,19 @@ namespace HeroesDB {
 						Debug.Write(".");
 						parts.Add(setKey, new List<Dictionary<String, Object>>());
 					}
-					var equipName = Convert.ToString(reader["equipName"]);
+					var equipNameShort = Convert.ToString(reader["equipName"]);
 					for (var i = 0; i < setNameParts.Length; i += 1) {
-						if (!equipName.StartsWith(String.Concat(setNameParts[i], " "), StringComparison.InvariantCulture)) {
+						if (!equipNameShort.StartsWith(String.Concat(setNameParts[i], " "), StringComparison.InvariantCulture)) {
 							break;
 						}
-						equipName = equipName.Substring(setNameParts[i].Length).Trim();
+						equipNameShort = equipNameShort.Substring(setNameParts[i].Length).Trim();
 					}
 					parts[setKey].Add(new Dictionary<String, Object>() {
 						{ "key", reader["equipKey"] },
-						{ "name", equipName },
+						{ "iconID", reader["equipIconID"] },
+						{ "name", reader["equipName"] },
+						{ "nameShort", equipNameShort },
+						{ "rarity", reader["equipRarity"] },
 						{ "base", Convert.ToInt32(reader["base"]) == 1 }
 					});
 				}
