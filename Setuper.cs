@@ -625,10 +625,11 @@ namespace HeroesDB {
 				";
 				var reader = command.ExecuteReader();
 				var missingIcons = new List<String>();
+				var files = new List<String>(Directory.GetFiles(iconPath));
 				while (reader.Read()) {
 					var iconFileName = String.Concat(reader["Icon"], ".tga");
 					var iconFile = Path.Combine(iconPath, iconFileName);
-					if (!File.Exists(iconFile)) {
+					if (files.Contains(iconFile)) {
 						missingIcons.Add(Convert.ToString(reader["Icon"]));
 					}
 				}
