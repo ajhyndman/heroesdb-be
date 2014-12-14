@@ -17,6 +17,163 @@ namespace HeroesDB {
 
 		private String outputPath;
 
+		private Dictionary<String, Dictionary<String, String[]>> _primaryProperties;
+		private Dictionary<String, Dictionary<String, String[]>> primaryProperties {
+			get {
+				if (this._primaryProperties == null) {
+					Debug.WriteLine("primaryProperties { get {");
+					Debug.Indent();
+					var properties = new Dictionary<String, Dictionary<String, String[]>>();
+					using (var connection = new SQLiteConnection(this.connectionString)) {
+						connection.Open();
+						var command = connection.CreateCommand();
+						command.CommandText = @"
+							SELECT DISTINCT
+								c.GroupKey AS groupKey,
+								c.TypeKey AS typeKey,
+								c.TypePrimaryProperties AS typePrimaryProperties
+							FROM HDB_Classification AS c;
+						";
+						var reader = command.ExecuteReader();
+						while (reader.Read()) {
+							var group = Convert.ToString(reader["groupKey"]);
+							var type = Convert.ToString(reader["typeKey"]);
+							if (!properties.ContainsKey(group)) {
+								Debug.Write(".");
+								properties.Add(group, new Dictionary<String, String[]>());
+							}
+							var typeProperties = new String[0];
+							if (reader["typePrimaryProperties"] != DBNull.Value) {
+								typeProperties = Convert.ToString(reader["typePrimaryProperties"]).Split(new [] { ", " }, StringSplitOptions.None);
+							}
+							properties[group].Add(type, typeProperties);
+						}
+						Debug.WriteLine("");
+					}
+					this._primaryProperties = properties;
+					Debug.Unindent();
+					Debug.WriteLine("} }");
+				}
+				return this._primaryProperties;
+			}
+		}
+
+		private Dictionary<String, List<Dictionary<String, Object>>> _equipRecipeShops;
+		private Dictionary<String, List<Dictionary<String, Object>>> equipRecipeShops {
+			get {
+				if (this._equipRecipeShops == null) {
+					Debug.WriteLine("equipRecipeShops { get {");
+					Debug.Indent();
+					var shops = new Dictionary<String, List<Dictionary<String, Object>>>();
+					using (var connection = new SQLiteConnection(this.connectionString)) {
+						connection.Open();
+						var command = connection.CreateCommand();
+						command.CommandText = @"
+							SELECT
+								ers.EquipKey AS equipKey,
+								ers.ShopKey AS shopKey,
+								ers.ShopName AS ShopName
+							FROM HDB_EquipRecipeShops AS ers
+							ORDER BY
+								ers.EquipKey,
+								ers.ShopName;
+						";
+						var reader = command.ExecuteReader();
+						while (reader.Read()) {
+							var equipKey = Convert.ToString(reader["equipKey"]);
+							if (!shops.ContainsKey(equipKey)) {
+								Debug.Write(".");
+								shops.Add(equipKey, new List<Dictionary<String, Object>>());
+							}
+							shops[equipKey].Add(new Dictionary<String, Object>() {
+								{ "key", reader["shopKey"] },
+								{ "name", reader["ShopName"] }
+							});
+						}
+						Debug.WriteLine("");
+					}
+					this._equipRecipeShops = shops;
+					Debug.Unindent();
+					Debug.WriteLine("} }");
+				}
+				return this._equipRecipeShops;
+			}
+		}
+
+		private Dictionary<String, Dictionary<String, Dictionary<String, Object>>> _equipRecipes;
+		private Dictionary<String, Dictionary<String, Dictionary<String, Object>>> equipRecipes {
+			get {
+				if (this._equipRecipes == null) {
+					Debug.WriteLine("equipRecipes { get {");
+					Debug.Indent();
+					var recipes = new Dictionary<String, Dictionary<String, Dictionary<String, Object>>>();
+					using (var connection = new SQLiteConnection(this.connectionString)) {
+						connection.Open();
+						var command = connection.CreateCommand();
+						command.CommandText = @"
+							SELECT
+								er.EquipKey AS equipKey,
+								er.Type AS type,
+								m.Key AS matKey,
+								m.IconID AS matIconID,
+								m.Name AS matName,
+								m.Rarity AS matRarity,
+								m.[Order] AS matOrder,
+								er.MatCount AS matCount,
+								er.AppearQuestName AS appearQuestName,
+								er.ExpertiseName AS expertiseName,
+								er.ExpertiseExperienceRequired AS expertiseExperienceRequired
+							FROM HDB_EquipRecipes AS er
+							INNER JOIN HDB_Mats AS m ON m.Key = er.MatKey
+							ORDER BY
+								er.EquipKey,
+								m.[Order],
+								m.Rarity DESC,
+								m.Name;
+						";
+						var reader = command.ExecuteReader();
+						while (reader.Read()) {
+							var equipKey = Convert.ToString(reader["equipKey"]);
+							var type = Convert.ToString(reader["type"]);
+							if (!recipes.ContainsKey(equipKey)) {
+								Debug.Write(".");
+								recipes.Add(equipKey, new Dictionary<String, Dictionary<String, Object>>());
+							}
+							if (!recipes[equipKey].ContainsKey(type)) {
+								recipes[equipKey].Add(type, new Dictionary<String, Object>());
+								if (reader["appearQuestName"] != DBNull.Value) {
+									recipes[equipKey][type].Add("appearQuestName", reader["appearQuestName"]);
+								}
+								if (reader["expertiseName"] != DBNull.Value) {
+									recipes[equipKey][type].Add("expertiseName", reader["expertiseName"]);
+									recipes[equipKey][type].Add("expertiseExperienceRequired", reader["expertiseExperienceRequired"]);
+								}
+								if (type == "npc" && this.equipRecipeShops.ContainsKey(equipKey)) {
+									recipes[equipKey][type].Add("shops", this.equipRecipeShops[equipKey]);
+								}
+							}
+							if (!recipes[equipKey][type].ContainsKey("mats")) {
+								recipes[equipKey][type].Add("mats", new List<Dictionary<String, Object>>());
+							}
+							((List<Dictionary<String, Object>>)recipes[equipKey][type]["mats"]).Add(new Dictionary<String, Object>() {
+								{ "key", reader["matKey"] },
+								{ "iconID", reader["matIconID"] },
+								{ "name", reader["matName"] },
+								{ "rarity", reader["matRarity"] },
+								{ "order", reader["matOrder"] },
+								{ "count", reader["matCount"] }
+							});
+						}
+						Debug.WriteLine("");
+					}
+					this._equipRecipes = recipes;
+					Debug.Unindent();
+					Debug.WriteLine("} }");
+				}
+				return this._equipRecipes;
+			}
+		}
+
 		public Exporter(String databaseFile, String outputPath) {
 			Debug.WriteLine("Exporter({0}, {1}) {{", new [] { databaseFile, outputPath });
 			Debug.Indent();
@@ -148,35 +305,6 @@ namespace HeroesDB {
 			}
 			Debug.Unindent();
 			Debug.WriteLine("}");
-		}
-
-		private Dictionary<String, Dictionary<String, String[]>> getPrimaryProperties() {
-			var primaryProperties = new Dictionary<String, Dictionary<String, String[]>>();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
-				connection.Open();
-				var command = connection.CreateCommand();
-				command.CommandText = @"
-					SELECT DISTINCT
-						c.GroupKey AS groupKey,
-						c.TypeKey AS typeKey,
-						c.TypePrimaryProperties AS typePrimaryProperties
-					FROM HDB_Classification AS c;
-				";
-				var reader = command.ExecuteReader();
-				while (reader.Read()) {
-					var group = Convert.ToString(reader["groupKey"]);
-					var type = Convert.ToString(reader["typeKey"]);
-					if (!primaryProperties.ContainsKey(group)) {
-						primaryProperties.Add(group, new Dictionary<String, String[]>());
-					}
-					var properties = new String[0];
-					if (reader["typePrimaryProperties"] != DBNull.Value) {
-						properties = Convert.ToString(reader["typePrimaryProperties"]).Split(new [] { ", " }, StringSplitOptions.None);
-					}
-					primaryProperties[group].Add(type, properties);
-				}
-			}
-			return primaryProperties;
 		}
 
 		public void ExportIcons(String fromPath) {
@@ -396,92 +524,9 @@ namespace HeroesDB {
 				Directory.CreateDirectory(path);
 			}
 			var serializer = new JavaScriptSerializer();
-			var primaryProperties = this.getPrimaryProperties();
 			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
-				command.CommandText = @"
-					SELECT
-						ers.EquipKey AS equipKey,
-						ers.ShopKey AS shopKey,
-						ers.ShopName AS ShopName
-					FROM HDB_EquipRecipeShops AS ers
-					ORDER BY
-						ers.EquipKey,
-						ers.ShopName;
-				";
-				var reader = command.ExecuteReader();
-				var recipeShops = new Dictionary<String, List<Dictionary<String, Object>>>();
-				while (reader.Read()) {
-					var equipKey = Convert.ToString(reader["equipKey"]);
-					if (!recipeShops.ContainsKey(equipKey)) {
-						Debug.Write(".");
-						recipeShops.Add(equipKey, new List<Dictionary<String, Object>>());
-					}
-					recipeShops[equipKey].Add(new Dictionary<String, Object>() {
-						{ "key", reader["shopKey"] },
-						{ "name", reader["ShopName"] }
-					});
-				}
-				Debug.WriteLine("");
-				reader.Close();
-				command.CommandText = @"
-					SELECT
-						er.EquipKey AS equipKey,
-						er.Type AS type,
-						m.Key AS matKey,
-						m.IconID AS matIconID,
-						m.Name AS matName,
-						m.Description AS matDescription,
-						m.Rarity AS matRarity,
-						er.MatCount AS matCount,
-						er.AppearQuestName AS appearQuestName,
-						er.ExpertiseName AS expertiseName,
-						er.ExpertiseExperienceRequired AS expertiseExperienceRequired
-					FROM HDB_EquipRecipes AS er
-					INNER JOIN HDB_Mats AS m ON m.Key = er.MatKey
-					ORDER BY
-						er.EquipKey,
-						CASE WHEN m.Key = 'gold' THEN 3 WHEN m.key LIKE 'cloth_lvl_' OR m.key LIKE 'skin_lvl_' OR m.key LIKE 'iron_ore_lvl_' THEN 2 ELSE 1 END,
-						m.Rarity DESC,
-						m.Name;
-				";
-				reader = command.ExecuteReader();
-				var recipes = new Dictionary<String, Dictionary<String, Dictionary<String, Object>>>();
-				while (reader.Read()) {
-					var equipKey = Convert.ToString(reader["equipKey"]);
-					var type = Convert.ToString(reader["type"]);
-					if (!recipes.ContainsKey(equipKey)) {
-						Debug.Write(".");
-						recipes.Add(equipKey, new Dictionary<String, Dictionary<String, Object>>());
-					}
-					if (!recipes[equipKey].ContainsKey(type)) {
-						recipes[equipKey].Add(type, new Dictionary<String, Object>());
-						if (reader["appearQuestName"] != DBNull.Value) {
-							recipes[equipKey][type].Add("appearQuestName", reader["appearQuestName"]);
-						}
-						else if (reader["expertiseName"] != DBNull.Value) {
-							recipes[equipKey][type].Add("expertiseName", reader["expertiseName"]);
-							recipes[equipKey][type].Add("expertiseExperienceRequired", reader["expertiseExperienceRequired"]);
-						}
-						if (type == "npc" && recipeShops.ContainsKey(equipKey)) {
-							recipes[equipKey][type].Add("shops", recipeShops[equipKey]);
-						}
-					}
-					if (!recipes[equipKey][type].ContainsKey("mats")) {
-						recipes[equipKey][type].Add("mats", new List<Dictionary<String, Object>>());
-					}
-					((List<Dictionary<String, Object>>)recipes[equipKey][type]["mats"]).Add(new Dictionary<String, Object>() {
-						{ "key", reader["matKey"] },
-						{ "iconID", reader["matIconID"] },
-						{ "name", reader["matName"] },
-						{ "description", this.removeFormattingTags(Convert.ToString(reader["matDescription"])) },
-						{ "rarity", reader["matRarity"] },
-						{ "count", reader["matCount"] }
-					});
-				}
-				Debug.WriteLine("");
-				reader.Close();
 				command.CommandText = @"
 					SELECT
 						e.Key AS key,
@@ -519,7 +564,7 @@ namespace HeroesDB {
 						e.RequiredLevel DESC,
 						e.Name;
 				";
-				reader = command.ExecuteReader();
+				var reader = command.ExecuteReader();
 				var table = new DataTable();
 				table.Load(reader);
 				var equips = new List<Dictionary<String, Object>>();
@@ -533,7 +578,7 @@ namespace HeroesDB {
 						{ "name", row["name"] },
 						{ "rarity", row["rarity"] }
 					};
-					var properties = primaryProperties[Convert.ToString(row["groupKey"])][Convert.ToString(row["typeKey"])];
+					var properties = this.primaryProperties[Convert.ToString(row["groupKey"])][Convert.ToString(row["typeKey"])];
 					if (properties.Length == 0) {
 						equip.Add("description", this.removeFormattingTags(Convert.ToString(row["description"])));
 					}
@@ -595,8 +640,8 @@ namespace HeroesDB {
 								break;
 						}
 					}
-					if (recipes.ContainsKey(Convert.ToString(row["key"]))) {
-						equip.Add("recipes", recipes[Convert.ToString(row["key"])]);
+					if (this.equipRecipes.ContainsKey(Convert.ToString(row["key"]))) {
+						equip.Add("recipes", this.equipRecipes[Convert.ToString(row["key"])]);
 					}
 					var json = serializer.Serialize(equip);
 					path = Path.Combine(this.outputPath, "objects", "equips");
@@ -617,7 +662,6 @@ namespace HeroesDB {
 				Directory.CreateDirectory(path);
 			}
 			var serializer = new JavaScriptSerializer();
-			var primaryProperties = this.getPrimaryProperties();
 			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
@@ -649,9 +693,24 @@ namespace HeroesDB {
 						sp.SetKey AS setKey,
 						s.Name AS setName,
 						sp.EquipKey AS equipKey,
+						sp.EquipClassificationText AS equipClassificationText,
 						sp.EquipIconID AS equipIconID,
 						sp.EquipName AS equipName,
 						sp.EquipRarity AS equipRarity,
+						sp.EquipATK AS equipATK,
+						sp.EquipPATK AS equipPATK,
+						sp.EquipMATK AS equipMATK,
+						sp.EquipSPEED AS equipSPEED,
+						sp.EquipCRIT AS equipCRIT,
+						sp.EquipBAL AS equipBAL,
+						sp.EquipHP AS equipHP,
+						sp.EquipDEF AS equipDEF,
+						sp.EquipCRITRES AS equipCRITRES,
+						sp.EquipSTR AS equipSTR,
+						sp.EquipINT AS equipINT,
+						sp.EquipDEX AS equipDEX,
+						sp.EquipWILL AS equipWILL,
+						sp.EquipSTAMINA AS equipSTAMINA,
 						sp.Base AS base
 					FROM HDB_SetParts AS sp
 					INNER JOIN HDB_Sets AS s ON s.Key = sp.SetKey
@@ -664,11 +723,11 @@ namespace HeroesDB {
 				var parts = new Dictionary<String, List<Dictionary<String, Object>>>();
 				while (reader.Read()) {
 					var setKey = Convert.ToString(reader["setKey"]);
-					var setNameParts = Convert.ToString(reader["setName"]).Split(new [] { ' ' });
 					if (!parts.ContainsKey(setKey)) {
 						Debug.Write(".");
 						parts.Add(setKey, new List<Dictionary<String, Object>>());
 					}
+					var setNameParts = Convert.ToString(reader["setName"]).Split(new [] { ' ' });
 					var equipNameShort = Convert.ToString(reader["equipName"]);
 					for (var i = 0; i < setNameParts.Length; i += 1) {
 						if (!equipNameShort.StartsWith(String.Concat(setNameParts[i], " "), StringComparison.InvariantCulture)) {
@@ -676,37 +735,34 @@ namespace HeroesDB {
 						}
 						equipNameShort = equipNameShort.Substring(setNameParts[i].Length).Trim();
 					}
-					parts[setKey].Add(new Dictionary<String, Object>() {
+					var equip = new Dictionary<String, Object>() {
 						{ "key", reader["equipKey"] },
+						{ "classificationText", reader["equipClassificationText"] },
 						{ "iconID", reader["equipIconID"] },
 						{ "name", reader["equipName"] },
 						{ "nameShort", equipNameShort },
 						{ "rarity", reader["equipRarity"] },
+						{ "atk", reader["equipATK"] },
+						{ "patk", reader["equipPATK"] },
+						{ "matk", reader["equipMATK"] },
+						{ "speed", reader["equipSPEED"] },
+						{ "crit", reader["equipCRIT"] },
+						{ "bal", reader["equipBAL"] },
+						{ "hp", reader["equipHP"] },
+						{ "def", reader["equipDEF"] },
+						{ "critres", reader["equipCRITRES"] },
+						{ "str", reader["equipSTR"] },
+						{ "int", reader["equipINT"] },
+						{ "dex", reader["equipDEX"] },
+						{ "will", reader["equipWILL"] },
+						{ "stamina", reader["equipSTAMINA"] },
 						{ "base", Convert.ToInt32(reader["base"]) == 1 }
-					});
-				}
-				/*
-				foreach (var setKey in parts.Keys) {
-					var sameFirstWord = true;
-					while (sameFirstWord) {
-						String firstWord = null;
-						foreach (var part in parts[setKey]) {
-							var name = (String)part["name"];
-							if (name.IndexOf(' ') == -1) {
-								sameFirstWord = false;
-								break;
-							}
-							firstWord = firstWord ?? name.Substring(0, name.IndexOf(' '));
-							sameFirstWord &= name.StartsWith(firstWord, StringComparison.InvariantCulture);
-						}
-						if (sameFirstWord) {
-							foreach (var part in parts[setKey]) {
-								part["name"] = ((String)part["name"]).Substring(firstWord.Length + 1);
-							}
-						}
+					};
+					if (this.equipRecipes.ContainsKey(Convert.ToString(reader["equipKey"]))) {
+						equip.Add("recipes", this.equipRecipes[Convert.ToString(reader["equipKey"])]);
 					}
+					parts[setKey].Add(equip);
 				}
-				*/
 				reader.Close();
 				command.CommandText = @"
 					SELECT
@@ -761,7 +817,6 @@ namespace HeroesDB {
 						effects.Add(setKey, new Dictionary<String, Dictionary<String, Object>>());
 					}
 					if (!effects[setKey].ContainsKey(partCount)) {
-						Debug.Write(".");
 						effects[setKey].Add(partCount, new Dictionary<String, Object>());
 					}
 					for (var i = 2; i < reader.FieldCount; i += 1) {
@@ -820,7 +875,7 @@ namespace HeroesDB {
 						{ "name", row["name"] },
 						{ "rarity", row["rarity"] }
 					};
-					var properties = primaryProperties[Convert.ToString(row["groupKey"])][Convert.ToString(row["typeKey"])];
+					var properties = this.primaryProperties[Convert.ToString(row["groupKey"])][Convert.ToString(row["typeKey"])];
 					foreach (var property in properties) {
 						set.Add(property, row[property]);
 					}

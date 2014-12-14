@@ -251,15 +251,6 @@ namespace HeroesDB {
 						t.RecipeKey,
 						t.RecipeFeature
 					FROM (
-						/*
-						SELECT
-							'npc' AS RecipeType,
-							LOWER(r.RecipeID) AS RecipeKey,
-							r.ItemClass,
-							r.Feature AS RecipeFeature
-						FROM RecipeMaterialInfo AS r
-						WHERE r.Type = 0
-						*/
 						SELECT DISTINCT
 							'npc' AS RecipeType,
 							LOWER(cs.RecipeID) AS RecipeKey,
@@ -500,23 +491,6 @@ namespace HeroesDB {
 						NULL AS CategoryName,
 						NULL AS CategoryOrder
 					FROM (
-						/*
-						SELECT rm.ItemClass
-						FROM RecipeMaterialInfo AS rm
-						INNER JOIN RecipeMaterialInfo AS r ON
-							r.Type = 0 AND
-							r.RecipeID = rm.RecipeID AND (
-								r.Feature = rm.Feature OR
-								COALESCE(r.Feature, rm.Feature) IS NULL
-							)
-						INNER JOIN HDB_FeaturedRecipes AS fr ON
-							fr.RecipeType = 'npc' AND
-							fr.RecipeKey = LOWER(r.RecipeID) AND (
-								fr.RecipeFeature = r.Feature OR
-								COALESCE(fr.RecipeFeature, r.Feature) IS NULL
-							)
-						WHERE rm.Type = 1
-						*/
 						SELECT rm.ItemClass
 						FROM RecipeMaterialInfo AS rm
 						INNER JOIN HDB_FeaturedRecipes AS fr ON
@@ -598,7 +572,9 @@ namespace HeroesDB {
 			Debug.Indent();
 			using (var connection = new SQLiteConnection(this.connectionString)) {
 				connection.Open();
+				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
+				command.Transaction = transaction;
 				command.CommandText = @"
 					DROP TABLE IF EXISTS HDB_Icons;
 					CREATE TABLE HDB_Icons (
@@ -643,6 +619,7 @@ namespace HeroesDB {
 					command.Parameters["@Icon"].Value = icon;
 					command.ExecuteNonQuery();
 				}
+				transaction.Commit();
 			}
 			Debug.Unindent();
 			Debug.WriteLine("}");
@@ -663,6 +640,7 @@ namespace HeroesDB {
 						Name NVARCHAR NOT NULL,
 						Description NVARCHAR,
 						Rarity INT NOT NULL,
+						[Order] INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(Key)
 					);
 					INSERT INTO HDB_Mats
@@ -672,7 +650,8 @@ namespace HeroesDB {
 						ico.ID AS IconID,
 						tn.Text AS Name,
 						td.Text AS Description,
-						i.Rarity
+						i.Rarity,
+						CASE WHEN i.ItemClass = 'gold' THEN 3 WHEN i.ItemClass LIKE 'cloth_lvl_' OR i.ItemClass LIKE 'skin_lvl_' OR i.ItemClass LIKE 'iron_ore_lvl_' THEN 2 ELSE 1 END AS [Order]
 					FROM HDB_Classification AS c
 					INNER JOIN ItemClassInfo AS i ON i._ROWID_ = c.ObjectID
 					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
@@ -821,32 +800,6 @@ namespace HeroesDB {
 						ExpertiseExperienceRequired INT,
 						CONSTRAINT [unique] UNIQUE(EquipKey, Type, MatKey)
 					);
-					/*
-					SELECT
-						e.Key AS EquipKey,
-						fr.RecipeType AS Type,
-						m.Key AS MatKey,
-						rm.Num AS MatCount,
-						NULL AS ExpertiseName,
-						NULL AS ExpertiseExperienceRequired
-					FROM HDB_Equips AS e
-					INNER JOIN RecipeMaterialInfo AS r ON
-						r.Type = 0 AND
-						LOWER(r.ItemClass) = e.Key
-					INNER JOIN HDB_FeaturedRecipes AS fr ON
-						fr.RecipeType = 'npc' AND
-						fr.RecipeKey = LOWER(r.RecipeID) AND (
-							fr.RecipeFeature = r.Feature OR
-							COALESCE(fr.RecipeFeature, r.Feature) IS NULL
-						)
-					INNER JOIN RecipeMaterialInfo AS rm ON
-						rm.Type = 1 AND
-						rm.RecipeID = r.RecipeID AND (
-							rm.Feature = r.Feature OR
-							COALESCE(rm.Feature, r.Feature) IS NULL
-						)
-					LEFT JOIN HDB_Mats AS m ON m.Key = LOWER(rm.ItemClass)
-					*/
 					INSERT INTO HDB_EquipRecipes
 					SELECT
 						e.Key AS EquipKey,
@@ -1120,9 +1073,24 @@ namespace HeroesDB {
 					CREATE TABLE HDB_SetParts (
 						SetKey NVARCHAR NOT NULL,
 						EquipKey NVARCHAR,
+						EquipClassificationText NVARCHAR, -- TODO: NOT NULL
 						EquipIconID INT,
 						EquipName NVARCHAR NOT NULL,
 						EquipRarity INT NOT NULL,
+						EquipATK INT,
+						EquipPATK INT,
+						EquipMATK INT,
+						EquipSPEED INT,
+						EquipCRIT INT,
+						EquipBAL INT,
+						EquipHP INT,
+						EquipDEF INT,
+						EquipCRITRES INT,
+						EquipSTR INT,
+						EquipINT INT,
+						EquipDEX INT,
+						EquipWILL INT,
+						EquipSTAMINA INT,
 						Base INT NOT NULL,
 						[Order] INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(SetKey, EquipKey, EquipName)
@@ -1131,9 +1099,24 @@ namespace HeroesDB {
 					SELECT
 						s.Key AS SetKey,
 						e.Key AS EquipKey,
+						c.GroupName || ', ' || CASE WHEN c.GroupKey = 'armor' THEN c.TypeName ELSE c.CategoryName END AS EquipClassificationText,
 						e.IconID AS EquipIconID,
 						tn.Text AS EquipName,
 						i.Rarity AS EquipRarity,
+						e.ATK AS EquipATK,
+						e.PATK AS EquipPATK,
+						e.MATK AS EquipMATK,
+						e.SPEED AS EquipSPEED,
+						e.CRIT AS EquipCRIT,
+						e.BAL AS EquipBAL,
+						e.HP AS EquipHP,
+						e.DEF AS EquipDEF,
+						e.CRITRES AS EquipCRITRES,
+						e.STR AS EquipSTR,
+						e.INT AS EquipINT,
+						e.DEX AS EquipDEX,
+						e.WILL AS EquipWILL,
+						e.STAMINA AS EquipSTAMINA,
 						CASE WHEN sibi.SetID IS NULL THEN 0 ELSE 1 END AS Base,
 						CASE i.Category WHEN 'WEAPON' THEN 1 WHEN 'HELM' THEN 2 WHEN 'TUNIC' THEN 3 WHEN 'PANTS' THEN 4 WHEN 'GLOVES' THEN 5 WHEN 'BOOTS' THEN 6 ELSE 7 END AS [Order]
 					FROM HDB_Sets AS s
@@ -1159,6 +1142,9 @@ namespace HeroesDB {
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = siai.ItemClass
 					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
 					LEFT JOIN HDB_Equips AS e ON e.Key = i.ItemClass
+					LEFT JOIN HDB_Classification AS c ON
+						c.ObjectType = 'equip' AND
+						c.ObjectID = e.ID
 					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass);
 				";
 				command.ExecuteNonQuery();
