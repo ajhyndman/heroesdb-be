@@ -325,6 +325,7 @@ namespace HeroesDB {
 						CategoryKey NVARCHAR,
 						CategoryName NVARCHAR,
 						CategoryOrder INT,
+						Name NVARCHAR,
 						CONSTRAINT [unique] UNIQUE(ObjectID, ObjectType, GroupKey, TypeKey, CategoryKey)
 					);
 
@@ -341,7 +342,8 @@ namespace HeroesDB {
 						'atk, bal, crit, speed, requiredLevel' AS TypePrimaryProperties,
 						LOWER(e.EquipClass) AS CategoryKey,
 						tcn.Text AS CategoryName,
-						CASE e.EquipClass WHEN 'DUALSWORD' THEN 1 WHEN 'DUALSPEAR' THEN 2 WHEN 'LONGSWORD' THEN 3 WHEN 'HAMMER' THEN 4 WHEN 'STAFF' THEN 5 WHEN 'SCYTHE' THEN 6 WHEN 'PILLAR' THEN 7 WHEN 'BLASTER' THEN 8 WHEN 'BOW' THEN 9 WHEN 'CROSSGUN' THEN 10 WHEN 'DUALBLADE' THEN 11 WHEN 'GREATSWORD' THEN 12 WHEN 'BATTLEGLAIVE' THEN 13 WHEN 'LONGBLADE' THEN 14 ELSE 15 END AS CategoryOrder
+						CASE e.EquipClass WHEN 'DUALSWORD' THEN 1 WHEN 'DUALSPEAR' THEN 2 WHEN 'LONGSWORD' THEN 3 WHEN 'HAMMER' THEN 4 WHEN 'STAFF' THEN 5 WHEN 'SCYTHE' THEN 6 WHEN 'PILLAR' THEN 7 WHEN 'BLASTER' THEN 8 WHEN 'BOW' THEN 9 WHEN 'CROSSGUN' THEN 10 WHEN 'DUALBLADE' THEN 11 WHEN 'GREATSWORD' THEN 12 WHEN 'BATTLEGLAIVE' THEN 13 WHEN 'LONGBLADE' THEN 14 ELSE 15 END AS CategoryOrder,
+						tgn.Text || ', ' || tcn.Text AS Name
 					FROM EquipItemInfo AS e
 					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
@@ -363,7 +365,8 @@ namespace HeroesDB {
 						'def, str, int, dex, will, requiredLevel' AS TypePrimaryProperties,
 						LOWER(sc.Name) AS CategoryKey,
 						sc.Name AS CategoryName,
-						sc.ID AS CategoryOrder
+						sc.ID AS CategoryOrder,
+						NULL AS Name
 					FROM SetInfo AS s
 					INNER JOIN (
 						SELECT DISTINCT
@@ -393,7 +396,8 @@ namespace HeroesDB {
 						'def, str, int, classRestriction, requiredLevel' AS TypePrimaryProperties,
 						LOWER(i.Category) AS CategoryKey,
 						tcn.Text AS CategoryName,
-						CASE i.Category WHEN 'HELM' THEN 1 WHEN 'TUNIC' THEN 2 WHEN 'PANTS' THEN 3 WHEN 'GLOVES' THEN 4 WHEN 'BOOTS' THEN 5 END AS CategoryOrder
+						CASE i.Category WHEN 'HELM' THEN 1 WHEN 'TUNIC' THEN 2 WHEN 'PANTS' THEN 3 WHEN 'GLOVES' THEN 4 WHEN 'BOOTS' THEN 5 END AS CategoryOrder,
+						ttn.Text || ', ' || tcn.Text AS Name
 					FROM EquipItemInfo AS e
 					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
@@ -416,7 +420,8 @@ namespace HeroesDB {
 						CASE WHEN i.Category IN ('ARTIFACT', 'BRACELET') THEN NULL ELSE 'str, int, def, classRestriction, requiredLevel' END AS TypePrimaryProperties,
 						LOWER(i.Category) AS CategoryKey,
 						tcn.Text AS CategoryName,
-						1 AS CategoryOrder
+						1 AS CategoryOrder,
+						tgn.Text || ', ' || tcn.Text AS Name
 					FROM EquipItemInfo AS e
 					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
@@ -440,7 +445,8 @@ namespace HeroesDB {
 						CASE WHEN e.EquipClass IN ('LARGESHIELD', 'SHIELD') THEN 'def, str, dex, will, requiredLevel' ELSE 'int, atk, crit, def, requiredLevel' END AS TypePrimaryProperties,
 						LOWER(e.EquipClass) AS CategoryKey,
 						tcn.Text AS CategoryName,
-						1 AS CategoryOrder
+						1 AS CategoryOrder,
+						'Off-hand, ' || tcn.Text AS Name
 					FROM EquipItemInfo AS e
 					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
@@ -461,7 +467,8 @@ namespace HeroesDB {
 						NULL AS TypePrimaryProperties,
 						NULL AS CategoryKey,
 						NULL AS CategoryName,
-						NULL AS CategoryOrder
+						NULL AS CategoryOrder,
+						NULL AS Name
 					FROM SetInfo AS s
 					INNER JOIN (
 						SELECT DISTINCT si.SetID
@@ -489,7 +496,8 @@ namespace HeroesDB {
 						NULL AS TypePrimaryProperties,
 						NULL AS CategoryKey,
 						NULL AS CategoryName,
-						NULL AS CategoryOrder
+						NULL AS CategoryOrder,
+						COALESCE(ecn.Name, tct.Text || ', ' || tcst.Text) AS Name
 					FROM (
 						SELECT rm.ItemClass
 						FROM RecipeMaterialInfo AS rm
@@ -513,7 +521,19 @@ namespace HeroesDB {
 						WHERE mm.Type = 1
 					) AS m
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = m.ItemClass
-					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_;
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
+					LEFT JOIN (
+						SELECT
+							e.ItemClass,
+							c.Name
+						FROM EquipItemInfo AS e
+						INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
+						INNER JOIN HDB_Classification AS c ON
+							c.ObjectID = e._ROWID_ AND
+							c.ObjectType = 'equip'
+					) AS ecn ON ecn.ItemClass = m.ItemClass
+					INNER JOIN HDB_Text AS tct ON tct.Key = 'HEROES_ITEM_TRADECATEGORY_NAME_MATERIAL'
+					INNER JOIN HDB_Text AS tcst ON tcst.Key = 'HEROES_ITEM_TRADECATEGORY_NAME_' || CASE WHEN i.TradeCategorySub IN ('COOKING', 'MATERIAL_CLOTH', 'MATERIAL_LEATHER', 'MATERIAL_ORE', 'MATERIAL_ENCHANT', 'MATERIAL_ENHANCE', 'MATERIAL_SUB', 'MATERIAL_SPIRITINJECTION') THEN i.TradeCategorySub ELSE 'TROPHY' END;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -637,6 +657,7 @@ namespace HeroesDB {
 						Key NVARCHAR NOT NULL,
 						IconID INT,
 						Name NVARCHAR NOT NULL,
+						Classification NVARCHAR NOT NULL,
 						Description NVARCHAR,
 						Rarity INT NOT NULL,
 						[Order] INT NOT NULL,
@@ -648,6 +669,7 @@ namespace HeroesDB {
 						LOWER(i.ItemClass) AS Key,
 						ico.ID AS IconID,
 						tn.Text AS Name,
+						c.Name AS Classification,
 						td.Text AS Description,
 						i.Rarity,
 						CASE WHEN i.ItemClass = 'gold' THEN 3 WHEN i.ItemClass LIKE 'cloth_lvl_' OR i.ItemClass LIKE 'skin_lvl_' OR i.ItemClass LIKE 'iron_ore_lvl_' THEN 2 ELSE 1 END AS [Order]
@@ -697,6 +719,7 @@ namespace HeroesDB {
 						CategoryKey NVARCHAR NOT NULL,
 						IconID INT,
 						Name NVARCHAR NOT NULL,
+						Classification NVARCHAR NOT NULL,
 						Description NVARCHAR,
 						Rarity INT NOT NULL,
 						SetKey NVARCHAR,
@@ -730,6 +753,7 @@ namespace HeroesDB {
 						c.CategoryKey,
 						ico._ROWID_ AS IconID,
 						tn.Text AS Name,
+						c.Name AS classification,
 						td.Text AS Description,
 						i.Rarity,
 						NULL AS SetKey,
@@ -1072,24 +1096,7 @@ namespace HeroesDB {
 					CREATE TABLE HDB_SetParts (
 						SetKey NVARCHAR NOT NULL,
 						EquipKey NVARCHAR,
-						EquipClassificationText NVARCHAR, -- TODO: NOT NULL
-						EquipIconID INT,
 						EquipName NVARCHAR NOT NULL,
-						EquipRarity INT NOT NULL,
-						EquipATK INT,
-						EquipPATK INT,
-						EquipMATK INT,
-						EquipSPEED INT,
-						EquipCRIT INT,
-						EquipBAL INT,
-						EquipHP INT,
-						EquipDEF INT,
-						EquipCRITRES INT,
-						EquipSTR INT,
-						EquipINT INT,
-						EquipDEX INT,
-						EquipWILL INT,
-						EquipSTAMINA INT,
 						Base INT NOT NULL,
 						[Order] INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(SetKey, EquipKey, EquipName)
@@ -1098,24 +1105,7 @@ namespace HeroesDB {
 					SELECT
 						s.Key AS SetKey,
 						e.Key AS EquipKey,
-						c.GroupName || ', ' || CASE WHEN c.GroupKey = 'armor' THEN c.TypeName ELSE c.CategoryName END AS EquipClassificationText,
-						e.IconID AS EquipIconID,
 						tn.Text AS EquipName,
-						i.Rarity AS EquipRarity,
-						e.ATK AS EquipATK,
-						e.PATK AS EquipPATK,
-						e.MATK AS EquipMATK,
-						e.SPEED AS EquipSPEED,
-						e.CRIT AS EquipCRIT,
-						e.BAL AS EquipBAL,
-						e.HP AS EquipHP,
-						e.DEF AS EquipDEF,
-						e.CRITRES AS EquipCRITRES,
-						e.STR AS EquipSTR,
-						e.INT AS EquipINT,
-						e.DEX AS EquipDEX,
-						e.WILL AS EquipWILL,
-						e.STAMINA AS EquipSTAMINA,
 						CASE WHEN sibi.SetID IS NULL THEN 0 ELSE 1 END AS Base,
 						CASE i.Category WHEN 'WEAPON' THEN 1 WHEN 'HELM' THEN 2 WHEN 'TUNIC' THEN 3 WHEN 'PANTS' THEN 4 WHEN 'GLOVES' THEN 5 WHEN 'BOOTS' THEN 6 ELSE 7 END AS [Order]
 					FROM HDB_Sets AS s
