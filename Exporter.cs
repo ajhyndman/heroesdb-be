@@ -7,6 +7,7 @@ using System.Drawing;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
+using System.Xml;
 using System;
 
 namespace HeroesDB {
@@ -156,7 +157,7 @@ namespace HeroesDB {
 					var lastRow = table.Rows.Count - 1 == i;
 					var sameType = lastRow || Convert.ToString(row["typeKey"]) == Convert.ToString(table.Rows[i + 1]["typeKey"]);
 					if (lastRow || !sameType) {
-						var primaryProperties = new String[0]; 
+						var primaryProperties = new String[0];
 						if (row["typePrimaryProperties"] != DBNull.Value) {
 							primaryProperties = Convert.ToString(row["typePrimaryProperties"]).Split(new [] { ", " }, StringSplitOptions.None);
 						}
@@ -186,6 +187,63 @@ namespace HeroesDB {
 				var json = serializer.Serialize(classification);
 				var path = Path.Combine(this.outputPath, "classification.json");
 				File.WriteAllText(path, json);
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void ExportQualityTypes() {
+			Debug.WriteLine("ExportQualityTypes() {");
+			Debug.Indent();
+			var path = Path.Combine(this.outputPath, "quality-types");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			var serializer = new JavaScriptSerializer();
+			Action<String, Dictionary<String, Dictionary<String, Object>>> serialize = (key, qualityType) => {
+				var json = serializer.Serialize(qualityType);
+				path = Path.Combine(this.outputPath, "quality-types");
+				path = Path.Combine(path, Path.ChangeExtension(key, "json"));
+				File.WriteAllText(path, json);
+			};
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						q.Key AS key,
+						q.Quality AS quality,
+						q.Property AS property,
+						q.Factor AS factor
+					FROM HDB_QualityTypes AS q
+					ORDER BY
+						q.Key,
+						q.Quality,
+						q.Property;
+				";
+				var reader = command.ExecuteReader();
+				var previousKey = "";
+				var qualityType = new Dictionary<String, Dictionary<String, Object>>();
+				while (reader.Read()) {
+					var key = Convert.ToString(reader["key"]);
+					if (key != previousKey) {
+						Debug.Write(".");
+						previousKey = key;
+						if (qualityType.Count > 0) {
+							serialize(key, qualityType);
+							qualityType.Clear();
+						}
+					}
+					var quality = Convert.ToString(reader["quality"]);
+					if (!qualityType.ContainsKey(quality)) {
+						qualityType.Add(quality, new Dictionary<String, Object>());
+					}
+					qualityType[quality].Add(Convert.ToString(reader["property"]), reader["factor"]);
+				}
+				if (qualityType.Count > 0) {
+					serialize(previousKey, qualityType);
+				}
+				Debug.WriteLine("");
 			}
 			Debug.Unindent();
 			Debug.WriteLine("}");
@@ -505,6 +563,7 @@ namespace HeroesDB {
 						e.Classification AS classification,
 						e.Description AS description,
 						e.Rarity AS rarity,
+						e.QualityTypeKey AS qualityTypeKey,
 						e.SetKey AS setKey,
 						e.SetName AS setName,
 						e.RequiredSkillName AS requiredSkillName,
@@ -829,6 +888,120 @@ namespace HeroesDB {
 					File.WriteAllText(path, json);
 				}
 				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void ExportSitemap(String toPath) {
+			Debug.WriteLine("ExportSitemap() {");
+			Debug.Indent();
+			using (var xml = XmlWriter.Create(Path.Combine(toPath, "sitemap.xml"))) {
+				xml.WriteStartElement("urlset", "http://www.sitemaps.org/schemas/sitemap/0.9");
+				Action<String, DateTime, Double> writeUrl = (loc, lastmod, priority) => {
+					xml.WriteStartElement("url");
+					xml.WriteElementString("loc", String.Concat("http://www.heroesdb.net/", loc));
+					xml.WriteElementString("lastmod", XmlConvert.ToString(lastmod, XmlDateTimeSerializationMode.Utc));
+					xml.WriteElementString("changefreq", "monthly");
+					xml.WriteElementString("priority", XmlConvert.ToString(priority));
+					xml.WriteEndElement();
+				};
+				var url = "";
+				var urlFile = Path.Combine(this.outputPath, "classification.json");
+				writeUrl(url, File.GetLastWriteTime(urlFile), 1);
+				Debug.WriteLine(".");
+				using (var connection = new SQLiteConnection(this.connectionString)) {
+					connection.Open();
+					var command = connection.CreateCommand();
+					command.CommandText = @"
+						SELECT DISTINCT
+							c.GroupKey,
+							c.TypeKey
+						FROM HDB_Classification AS c
+						WHERE c.GroupKey IS NOT NULL
+						ORDER BY
+							c.GroupOrder,
+							c.GroupName,
+							c.TypeOrder,
+							c.TypeName;
+					";
+					var reader = command.ExecuteReader();
+					while (reader.Read()) {
+						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"]);
+						urlFile = Path.Combine(this.outputPath, "objects", Path.ChangeExtension(String.Concat(reader["GroupKey"], "-", reader["TypeKey"]), ".json"));
+						writeUrl(url, File.GetLastWriteTime(urlFile), 0.9);
+						Debug.Write(".");
+					}
+					Debug.WriteLine("");
+					reader.Close();
+					command.CommandText = @"
+						SELECT DISTINCT
+							c.GroupKey,
+							c.TypeKey,
+							c.CategoryKey
+						FROM HDB_Classification AS c
+						WHERE c.GroupKey IS NOT NULL
+						ORDER BY
+							c.GroupOrder,
+							c.GroupName,
+							c.TypeOrder,
+							c.TypeName,
+							c.CategoryOrder,
+							c.CategoryName;
+					";
+					reader = command.ExecuteReader();
+					while (reader.Read()) {
+						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"], "/", reader["CategoryKey"]);
+						urlFile = Path.Combine(this.outputPath, "objects", Path.ChangeExtension(String.Concat(reader["GroupKey"], "-", reader["TypeKey"]), ".json"));
+						writeUrl(url, File.GetLastWriteTime(urlFile), 0.8);
+						Debug.Write(".");
+					}
+					Debug.WriteLine("");
+					reader.Close();
+					command.CommandText = @"
+						SELECT
+							e.Key,
+							e.GroupKey,
+							e.TypeKey,
+							e.CategoryKey
+						FROM HDB_Equips AS e
+						ORDER BY
+							e.GroupKey,
+							e.TypeKey,
+							e.RequiredLevel DESC,
+							e.Name;
+					";
+					reader = command.ExecuteReader();
+					while (reader.Read()) {
+						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"], "/", reader["CategoryKey"], "/", reader["Key"], ".equip");
+						urlFile = Path.Combine(this.outputPath, "objects", "equips", Path.ChangeExtension(Convert.ToString(reader["Key"]), ".json"));
+						writeUrl(url, File.GetLastWriteTime(urlFile), 0.7);
+						Debug.Write(".");
+					}
+					Debug.WriteLine("");
+					reader.Close();
+					command.CommandText = @"
+						SELECT
+							s.Key,
+							s.GroupKey,
+							s.TypeKey
+						FROM HDB_Sets AS s
+						ORDER BY
+							s.GroupKey,
+							s.TypeKey,
+							s.RequiredLevel DESC,
+							s.Name;
+					";
+					reader = command.ExecuteReader();
+					while (reader.Read()) {
+						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"], "/", reader["Key"], ".set");
+						urlFile = Path.Combine(this.outputPath, "objects", "sets", Path.ChangeExtension(Convert.ToString(reader["Key"]), ".json"));
+						writeUrl(url, File.GetLastWriteTime(urlFile), 0.7);
+						Debug.Write(".");
+					}
+					Debug.WriteLine("");
+				}
+				xml.WriteEndElement();
 			}
 			Debug.Unindent();
 			Debug.WriteLine("}");

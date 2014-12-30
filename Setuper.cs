@@ -514,7 +514,7 @@ namespace HeroesDB {
 						INNER JOIN ManufactureRecipeInfo AS mr ON mr.RecipeID = mm.RecipeID
 						INNER JOIN HDB_FeaturedRecipes AS fr ON
 							fr.RecipeType = 'pc' AND
-							fr.RecipeKey = LOWER(mr.RecipeID) AND ( 
+							fr.RecipeKey = LOWER(mr.RecipeID) AND (
 								fr.RecipeFeature = mr.Feature OR
 								COALESCE(fr.RecipeFeature, mr.Feature) IS NULL
 							)
@@ -542,7 +542,7 @@ namespace HeroesDB {
 						HDB_Classification.ObjectType = 'equip' AND
 						HDB_Classification.ObjectID IN (
 							SELECT e._ROWID_
-							FROM EquipItemInfo AS e 
+							FROM EquipItemInfo AS e
 							INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
 							LEFT JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
 							LEFT JOIN ItemClassInfo AS ai ON ai.ItemClass = 'avatar_' || i.ItemClass
@@ -573,7 +573,7 @@ namespace HeroesDB {
 									SELECT s.SetID
 									FROM SetInfo AS s
 									INNER JOIN SetItemInfo AS si ON si.SetID = s.SetID
-									INNER JOIN EquipItemInfo AS e ON e.ItemClass = si.ItemClass 
+									INNER JOIN EquipItemInfo AS e ON e.ItemClass = si.ItemClass
 									INNER JOIN HDB_Classification AS c ON
 										c.ObjectType = 'equip' AND
 										c.ObjectID = e._ROWID_
@@ -582,6 +582,36 @@ namespace HeroesDB {
 				";
 				command.ExecuteNonQuery();
 				transaction.Commit();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void SetQualityTypes() {
+			Debug.WriteLine("SetQualityTypes() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_QualityTypes;
+					CREATE TABLE HDB_QualityTypes (
+						Key NVARCHAR NOT NULL,
+						Quality INT NOT NULL,
+						Property NVARCHAR NOT NULL,
+						Factor DOUBLE NOT NULL,
+						CONSTRAINT [unique] UNIQUE(Key, Quality, Property)
+					);
+					INSERT INTO HDB_QualityTypes
+					SELECT
+						LOWER(q.ItemType) AS Key,
+						q.Quality,
+						LOWER(q.Stat) AS Property,
+						q.Value AS Factor
+					FROM QualityStatInfo AS q
+					WHERE q.Quality IN (1, 3, 4, 5);
+				";
+				command.ExecuteNonQuery();
 			}
 			Debug.Unindent();
 			Debug.WriteLine("}");
@@ -722,6 +752,7 @@ namespace HeroesDB {
 						Classification NVARCHAR NOT NULL,
 						Description NVARCHAR,
 						Rarity INT NOT NULL,
+						QualityTypeKey NVARCHAR,
 						SetKey NVARCHAR,
 						SetName NVARCHAR,
 						RequiredSkillName NVARCHAR,
@@ -756,6 +787,7 @@ namespace HeroesDB {
 						c.Name AS classification,
 						td.Text AS Description,
 						i.Rarity,
+						LOWER(e.QualityType) AS QualityTypeKey,
 						NULL AS SetKey,
 						NULL AS SetName,
 						trs.Text AS RequiredSkillName,

@@ -21,6 +21,7 @@ namespace HeroesDB {
 				stp.SetFeaturedEquips();
 				stp.SetFeaturedRecipes();
 				stp.SetClassification();
+				stp.SetQualityTypes();
 				stp.SetIcons(@"D:\HeroesDB\hfs\icons");
 				stp.SetMats();
 				stp.SetEquips();
@@ -28,10 +29,12 @@ namespace HeroesDB {
 				var exp = new Exporter(DatabaseFile, @"D:\HeroesDB\www\data\");
 				exp.ExportCharacters();
 				exp.ExportClassification();
+				exp.ExportQualityTypes();
 				exp.ExportIcons(@"D:\HeroesDB\hfs\icons");
 				exp.ExportMats();
 				exp.ExportEquips();
 				exp.ExportSets();
+				exp.ExportSitemap(@"D:\HeroesDB\www\");
 			}
 			catch (Exception exception) {
 				Debug.WriteLine(exception.Source);
