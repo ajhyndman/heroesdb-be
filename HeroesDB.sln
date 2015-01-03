@@ -2,7 +2,7 @@
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
 # SharpDevelop 5.0
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "export", "export.csproj", "{908D93E8-7B96-4CD3-8611-33A72F5D1279}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HeroesDB", "HeroesDB.csproj", "{908D93E8-7B96-4CD3-8611-33A72F5D1279}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
