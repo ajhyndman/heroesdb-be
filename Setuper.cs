@@ -519,6 +519,12 @@ namespace HeroesDB {
 								COALESCE(fr.RecipeFeature, mr.Feature) IS NULL
 							)
 						WHERE mm.Type = 1
+						UNION
+						SELECT DISTINCT e.MaterialClass1
+						FROM EnhanceInfo AS e
+						UNION
+						SELECT DISTINCT e.MaterialClass2
+						FROM EnhanceInfo AS e
 					) AS m
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = m.ItemClass
 					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
@@ -597,19 +603,103 @@ namespace HeroesDB {
 					DROP TABLE IF EXISTS HDB_QualityTypes;
 					CREATE TABLE HDB_QualityTypes (
 						Key NVARCHAR NOT NULL,
-						Quality INT NOT NULL,
+						Level INT NOT NULL,
 						Property NVARCHAR NOT NULL,
-						Factor DOUBLE NOT NULL,
-						CONSTRAINT [unique] UNIQUE(Key, Quality, Property)
+						Improvement DOUBLE NOT NULL,
+						CONSTRAINT [unique] UNIQUE(Key, Level, Property)
 					);
 					INSERT INTO HDB_QualityTypes
 					SELECT
-						LOWER(q.ItemType) AS Key,
-						q.Quality,
-						LOWER(q.Stat) AS Property,
-						q.Value AS Factor
-					FROM QualityStatInfo AS q
-					WHERE q.Quality IN (1, 3, 4, 5);
+						LOWER(qs.ItemType) AS Key,
+						qs.Quality AS Level,
+						CASE qs.Stat WHEN 'ATK' THEN 'patk' ELSE LOWER(qs.Stat) END AS Property,
+						qs.Value AS Improvement
+					FROM QualityStatInfo AS qs
+					INNER JOIN (
+						SELECT DISTINCT e.QualityType
+						FROM EquipItemInfo AS e
+						INNER JOIN HDB_Classification AS c ON
+							c.ObjectType = 'equip' AND
+							c.ObjectID = e._ROWID_
+					) AS e ON e.QualityType = qs.ItemType
+					WHERE qs.Quality IN (1, 3, 4, 5);
+				";
+				command.ExecuteNonQuery();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void SetEnhanceTypes() {
+			Debug.WriteLine("SetEnhanceTypes() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EnhanceTypes;
+					CREATE TABLE HDB_EnhanceTypes (
+						Key NVARCHAR NOT NULL,
+						Level INT NOT NULL,
+						Chance DOUBLE NOT NULL,
+						Risk NVARCHAR NOT NULL,
+						Mat1Key NVARCHAR NOT NULL,
+						Mat1IconID INT NOT NULL,
+						Mat1Name NVARCHAR NOT NULL,
+						Mat1Rarity INT NOT NULL,
+						Mat1Count INT NOT NULL,
+						Mat2Key NVARCHAR NOT NULL,
+						Mat2IconID INT NOT NULL,
+						Mat2Name NVARCHAR NOT NULL,
+						Mat2Rarity INT NOT NULL,
+						Mat2Count INT NOT NULL,
+						Mat3Key NVARCHAR NOT NULL,
+						Mat3IconID INT NOT NULL,
+						Mat3Name NVARCHAR NOT NULL,
+						Mat3Rarity INT NOT NULL,
+						Mat3Count INT NOT NULL,
+						Property NVARCHAR NOT NULL,
+						Improvement DOUBLE NOT NULL,
+						CONSTRAINT [unique] UNIQUE(Key, Level, Property)
+					);
+					INSERT INTO HDB_EnhanceTypes
+					SELECT
+						LOWER(ens.EnhanceType) AS Key,
+						ens.EnhanceLevel AS Level,
+						en.SuccessRatio AS Chance,
+						CASE en.OnFail WHEN 'NoPenalty' THEN 'none' WHEN 'RankDown' THEN 'downgrade' WHEN 'RankReset' THEN 'reset' WHEN 'Destroy' THEN 'break' END AS Risk,
+						m1.Key AS Mat1Key,
+						m1.IconID AS Mat1IconID,
+						m1.Name AS Mat1Name,
+						m1.Rarity AS Mat1Rarity,
+						en.Gold AS Mat1Count,
+						m2.Key AS Mat2Key,
+						m2.IconID AS Mat2IconID,
+						m2.Name AS Mat2Name,
+						m2.Rarity AS Mat2Rarity,
+						en.MaterialNum1 AS Mat2Count,
+						m3.Key AS Mat3Key,
+						m3.IconID AS Mat3IconID,
+						m3.Name AS Mat3Name,
+						m3.Rarity AS Mat3Rarity,
+						en.MaterialNum2 AS Mat3Count,
+						CASE ens.Stat WHEN 'ATK' THEN 'patk' WHEN 'ATK_Absolute' THEN 'aatk' WHEN 'ATK_Speed' THEN 'speed' WHEN 'MaxDurability' THEN 'durability' ELSE LOWER(ens.Stat) END AS Property,
+						CASE WHEN ens.Stat = 'MaxDurability' THEN ens.Value / 100 ELSE ens.Value END AS Improvement
+					FROM EnhanceStatInfo AS ens
+					INNER JOIN EnhanceInfo AS en ON
+						en.EnhanceType = ens.EnhanceType AND
+						en.EnhanceLevel = ens.EnhanceLevel
+					INNER JOIN (
+						SELECT DISTINCT e.EnhanceType
+						FROM EquipItemInfo AS e
+						INNER JOIN HDB_Classification AS c ON
+							c.ObjectType = 'equip' AND
+							c.ObjectID = e._ROWID_
+					) AS e ON e.EnhanceType = ens.EnhanceType
+					LEFT JOIN HDB_Mats AS m1 ON m1.Key = 'gold'
+					LEFT JOIN HDB_Mats AS m2 ON m2.Key = en.MaterialClass1
+					LEFT JOIN HDB_Mats AS m3 ON m3.Key = en.MaterialClass2
+					WHERE ens.Stat != 'DEF_Destroyed';
 				";
 				command.ExecuteNonQuery();
 			}
@@ -753,6 +843,7 @@ namespace HeroesDB {
 						Description NVARCHAR,
 						Rarity INT NOT NULL,
 						QualityTypeKey NVARCHAR,
+						EnhanceTypeKey NVARCHAR,
 						SetKey NVARCHAR,
 						SetName NVARCHAR,
 						RequiredSkillName NVARCHAR,
@@ -773,6 +864,8 @@ namespace HeroesDB {
 						DEX INT NOT NULL,
 						WILL INT NOT NULL,
 						STAMINA INT NOT NULL,
+						DURABILITY INT NOT NULL,
+						WEIGHT INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(Key)
 					);
 					INSERT INTO HDB_Equips
@@ -788,6 +881,7 @@ namespace HeroesDB {
 						td.Text AS Description,
 						i.Rarity,
 						LOWER(e.QualityType) AS QualityTypeKey,
+						LOWER(e.EnhanceType) AS EnhanceTypeKey,
 						NULL AS SetKey,
 						NULL AS SetName,
 						trs.Text AS RequiredSkillName,
@@ -807,7 +901,9 @@ namespace HeroesDB {
 						e.INT,
 						e.DEX,
 						e.WILL,
-						e.STAMINA
+						e.STAMINA,
+						e.MaxDurability / 100 AS DURABILITY,
+						e.Weight AS WEIGHT
 					FROM HDB_Classification AS c
 					INNER JOIN EquipItemInfo AS e ON e._ROWID_ = c.ObjectID
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
@@ -997,6 +1093,8 @@ namespace HeroesDB {
 						DEX INT NOT NULL,
 						WILL INT NOT NULL,
 						STAMINA INT NOT NULL,
+						DURABILITY INT NOT NULL,
+						WEIGHT INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(Key)
 					);
 					INSERT INTO HDB_Sets
@@ -1023,7 +1121,9 @@ namespace HeroesDB {
 						ss.INT + COALESCE(se.INT, 0) AS INT,
 						ss.DEX + COALESCE(se.DEX, 0) AS DEX,
 						ss.WILL + COALESCE(se.WILL, 0) AS WILL,
-						ss.STAMINA
+						ss.STAMINA,
+						ss.DURABILITY / 100 AS DURABILITY,
+						ss.Weight AS WEIGHT
 					FROM (
 						SELECT DISTINCT
 							c.ObjectID,
@@ -1054,7 +1154,9 @@ namespace HeroesDB {
 							SUM(e.INT) AS INT,
 							SUM(e.DEX) AS DEX,
 							SUM(e.WILL) AS WILL,
-							SUM(e.STAMINA) AS STAMINA
+							SUM(e.STAMINA) AS STAMINA,
+							SUM(e.MaxDurability / 100) AS DURABILITY,
+							SUM(e.Weight) AS WEIGHT
 						FROM SetInfo AS s
 						INNER JOIN SetItemInfo AS si ON si.SetID = s.SetID
 						INNER JOIN ItemClassInfo AS i ON i.ItemClass = si.BaseItemClass

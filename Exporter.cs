@@ -212,13 +212,13 @@ namespace HeroesDB {
 				command.CommandText = @"
 					SELECT
 						q.Key AS key,
-						q.Quality AS quality,
+						q.Level AS level,
 						q.Property AS property,
-						q.Factor AS factor
+						q.Improvement AS improvement
 					FROM HDB_QualityTypes AS q
 					ORDER BY
 						q.Key,
-						q.Quality,
+						q.Level,
 						q.Property;
 				";
 				var reader = command.ExecuteReader();
@@ -228,20 +228,123 @@ namespace HeroesDB {
 					var key = Convert.ToString(reader["key"]);
 					if (key != previousKey) {
 						Debug.Write(".");
-						previousKey = key;
 						if (qualityType.Count > 0) {
-							serialize(key, qualityType);
+							serialize(previousKey, qualityType);
 							qualityType.Clear();
 						}
+						previousKey = key;
 					}
-					var quality = Convert.ToString(reader["quality"]);
-					if (!qualityType.ContainsKey(quality)) {
-						qualityType.Add(quality, new Dictionary<String, Object>());
+					var level = Convert.ToString(reader["level"]);
+					if (!qualityType.ContainsKey(level)) {
+						qualityType.Add(level, new Dictionary<String, Object>());
 					}
-					qualityType[quality].Add(Convert.ToString(reader["property"]), reader["factor"]);
+					qualityType[level].Add(Convert.ToString(reader["property"]), reader["improvement"]);
 				}
 				if (qualityType.Count > 0) {
 					serialize(previousKey, qualityType);
+				}
+				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void ExportEnhanceTypes() {
+			Debug.WriteLine("ExportEnhanceTypes() {");
+			Debug.Indent();
+			var path = Path.Combine(this.outputPath, "enhance-types");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			var serializer = new JavaScriptSerializer();
+			Action<String, Dictionary<String, Dictionary<String, Object>>> serialize = (key, enhanceType) => {
+				var json = serializer.Serialize(enhanceType);
+				path = Path.Combine(this.outputPath, "enhance-types");
+				path = Path.Combine(path, Path.ChangeExtension(key, "json"));
+				File.WriteAllText(path, json);
+			};
+			using (var connection = new SQLiteConnection(this.connectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						e.Key AS key,
+						e.Level AS level,
+						e.Chance AS chance,
+						e.Risk AS risk,
+						e.Mat1Key AS mat1Key,
+						e.Mat1IconID AS mat1IconID,
+						e.Mat1Name AS mat1Name,
+						e.Mat1Rarity AS mat1Rarity,
+						e.Mat1Count AS mat1Count,
+						e.Mat2Key AS mat2Key,
+						e.Mat2IconID AS mat2IconID,
+						e.Mat2Name AS mat2Name,
+						e.Mat2Rarity AS mat2Rarity,
+						e.Mat2Count AS mat2Count,
+						e.Mat3Key AS mat3Key,
+						e.Mat3IconID AS mat3IconID,
+						e.Mat3Name AS mat3Name,
+						e.Mat3Rarity AS mat3Rarity,
+						e.Mat3Count AS mat3Count,
+						e.Property AS property,
+						e.Improvement AS improvement
+					FROM HDB_EnhanceTypes AS e
+					ORDER BY
+						e.Key,
+						e.Level,
+						e.Property;
+				";
+				var reader = command.ExecuteReader();
+				var previousKey = "";
+				var enhanceType = new Dictionary<String, Dictionary<String, Object>>();
+				while (reader.Read()) {
+					var key = Convert.ToString(reader["key"]);
+					if (key != previousKey) {
+						Debug.Write(".");
+						if (enhanceType.Count > 0) {
+							serialize(previousKey, enhanceType);
+							enhanceType.Clear();
+						}
+						previousKey = key;
+						var mats = new Dictionary<String, Object> {};
+						mats.Add(Convert.ToString(reader["mat1Key"]), new Dictionary<String, Object>() {
+							{ "iconID", reader["mat1IconID"] },
+							{ "name", reader["mat1Name"] },
+							{ "rarity", reader["mat1Rarity"] },
+							{ "order", 3 }
+						});
+						mats.Add(Convert.ToString(reader["mat2Key"]), new Dictionary<String, Object>() {
+							{ "iconID", reader["mat2IconID"] },
+							{ "name", reader["mat2Name"] },
+							{ "rarity", reader["mat2Rarity"] },
+							{ "order", 2 }
+						});
+						mats.Add(Convert.ToString(reader["mat3Key"]), new Dictionary<String, Object>() {
+							{ "iconID", reader["mat3IconID"] },
+							{ "name", reader["mat3Name"] },
+							{ "rarity", reader["mat3Rarity"] },
+							{ "order", 1 }
+						});
+						enhanceType.Add("mats", mats);
+					}
+					var level = Convert.ToString(reader["level"]);
+					if (!enhanceType.ContainsKey(level)) {
+						var mats = new Dictionary<String, Object>() {
+							{ Convert.ToString(reader["mat1Key"]), reader["mat1Count"] },
+							{ Convert.ToString(reader["mat2Key"]), reader["mat2Count"] },
+							{ Convert.ToString(reader["mat3Key"]), reader["mat3Count"] }
+						};
+						enhanceType.Add(level, new Dictionary<String, Object>() {
+							{ "chance", reader["chance"] },
+							{ "risk", reader["risk"] },
+							{ "mats", mats }
+						});
+					}
+					enhanceType[level].Add(Convert.ToString(reader["property"]), reader["improvement"]);
+				}
+				if (enhanceType.Count > 0) {
+					serialize(previousKey, enhanceType);
 				}
 				Debug.WriteLine("");
 			}
@@ -564,6 +667,7 @@ namespace HeroesDB {
 						e.Description AS description,
 						e.Rarity AS rarity,
 						e.QualityTypeKey AS qualityTypeKey,
+						e.EnhanceTypeKey AS enhanceTypeKey,
 						e.SetKey AS setKey,
 						e.SetName AS setName,
 						e.RequiredSkillName AS requiredSkillName,
@@ -583,7 +687,9 @@ namespace HeroesDB {
 						e.INT AS int,
 						e.DEX AS dex,
 						e.WILL AS will,
-						e.STAMINA AS stamina
+						e.STAMINA AS stamina,
+						e.DURABILITY AS durability,
+						e.WEIGHT AS weight
 					FROM HDB_Equips AS e
 					ORDER BY
 						e.GroupKey,
@@ -829,7 +935,9 @@ namespace HeroesDB {
 						s.INT AS int,
 						s.DEX AS dex,
 						s.WILL AS will,
-						s.STAMINA AS stamina
+						s.STAMINA AS stamina,
+						s.DURABILITY AS durability,
+						s.WEIGHT AS weight
 					FROM HDB_Sets AS s
 					ORDER BY
 						s.GroupKey,
