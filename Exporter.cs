@@ -936,7 +936,6 @@ namespace HeroesDB {
 						s.DEX AS dex,
 						s.WILL AS will,
 						s.STAMINA AS stamina,
-						s.DURABILITY AS durability,
 						s.WEIGHT AS weight
 					FROM HDB_Sets AS s
 					ORDER BY

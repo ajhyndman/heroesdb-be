@@ -1093,7 +1093,6 @@ namespace HeroesDB {
 						DEX INT NOT NULL,
 						WILL INT NOT NULL,
 						STAMINA INT NOT NULL,
-						DURABILITY INT NOT NULL,
 						WEIGHT INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(Key)
 					);
@@ -1122,7 +1121,6 @@ namespace HeroesDB {
 						ss.DEX + COALESCE(se.DEX, 0) AS DEX,
 						ss.WILL + COALESCE(se.WILL, 0) AS WILL,
 						ss.STAMINA,
-						ss.DURABILITY / 100 AS DURABILITY,
 						ss.Weight AS WEIGHT
 					FROM (
 						SELECT DISTINCT
@@ -1155,7 +1153,6 @@ namespace HeroesDB {
 							SUM(e.DEX) AS DEX,
 							SUM(e.WILL) AS WILL,
 							SUM(e.STAMINA) AS STAMINA,
-							SUM(e.MaxDurability / 100) AS DURABILITY,
 							SUM(e.Weight) AS WEIGHT
 						FROM SetInfo AS s
 						INNER JOIN SetItemInfo AS si ON si.SetID = s.SetID
