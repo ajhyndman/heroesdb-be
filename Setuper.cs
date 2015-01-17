@@ -12,21 +12,21 @@ namespace HeroesDB {
 
 	public class Setuper {
 
-		private String connectionString;
+		private Config config;
 
 		private List<String> enabledFeatures;
 
-		public Setuper(String databaseFile) {
-			Debug.WriteLine("Setuper({0}) {{", new [] { databaseFile });
+		public Setuper(Config config) {
+			Debug.WriteLine("Setuper() {");
 			Debug.Indent();
-			this.connectionString = String.Format("Data Source={0}; Version=3;", databaseFile);
+			this.config = config;
 			Debug.Unindent();
 			Debug.WriteLine("}");
 		}
 
 		private void loadFeatures() {
 			var region = ConfigurationManager.AppSettings["Region"];
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = String.Format(@"
@@ -74,10 +74,10 @@ namespace HeroesDB {
 			return featured;
 		}
 
-		public void ImportText(String textFile) {
-			Debug.WriteLine("ImportText({0}) {{", new [] { textFile });
+		public void ImportText() {
+			Debug.WriteLine("ImportText() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -90,7 +90,7 @@ namespace HeroesDB {
 					);
 				";
 				command.ExecuteNonQuery();
-				using (var file = File.OpenText(textFile)) {
+				using (var file = File.OpenText(this.config.TextImportFile)) {
 					var test = new Regex(@"^\s*""(?<key>.*)""\s*""(?<text>.*)""\s*$");
 					command.CommandText = "INSERT INTO HDB_Text VALUES (@Key, @Text);";
 					command.Parameters.Add("@Key", DbType.String, 250);
@@ -114,7 +114,7 @@ namespace HeroesDB {
 		public void SetCharacters() {
 			Debug.WriteLine("SetCharacters() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -146,7 +146,7 @@ namespace HeroesDB {
 		public void SetFeaturedItems() {
 			Debug.WriteLine("SetFeaturedItems() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -187,7 +187,7 @@ namespace HeroesDB {
 		public void SetFeaturedEquips() {
 			Debug.WriteLine("SetFeaturedEquips() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -230,7 +230,7 @@ namespace HeroesDB {
 		public void SetFeaturedRecipes() {
 			Debug.WriteLine("SetFeaturedRecipes() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -305,7 +305,7 @@ namespace HeroesDB {
 		public void SetClassification() {
 			Debug.WriteLine("SetClassification() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -596,7 +596,7 @@ namespace HeroesDB {
 		public void SetQualityTypes() {
 			Debug.WriteLine("SetQualityTypes() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -633,7 +633,7 @@ namespace HeroesDB {
 		public void SetEnhanceTypes() {
 			Debug.WriteLine("SetEnhanceTypes() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -707,10 +707,10 @@ namespace HeroesDB {
 			Debug.WriteLine("}");
 		}
 
-		public void SetIcons(String iconPath) {
+		public void SetIcons() {
 			Debug.WriteLine("SetIcons() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -743,7 +743,7 @@ namespace HeroesDB {
 				var missingIcons = new List<String>();
 				while (reader.Read()) {
 					var iconFileName = String.Concat(reader["Icon"], ".tga");
-					var iconFile = Path.Combine(iconPath, iconFileName);
+					var iconFile = Path.Combine(this.config.IconImportPath, iconFileName);
 					if (!File.Exists(iconFile)) {
 						missingIcons.Add(Convert.ToString(reader["Icon"]));
 					}
@@ -767,7 +767,7 @@ namespace HeroesDB {
 		public void SetMats() {
 			Debug.WriteLine("SetMats() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -824,7 +824,7 @@ namespace HeroesDB {
 		public void SetEquips() {
 			Debug.WriteLine("SetEquips() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();
@@ -1062,7 +1062,7 @@ namespace HeroesDB {
 		public void SetSets() {
 			Debug.WriteLine("SetSets() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
 				var command = connection.CreateCommand();

@@ -14,9 +14,7 @@ namespace HeroesDB {
 
 	public class Exporter {
 
-		private String connectionString;
-
-		private String outputPath;
+		private Config config;
 
 		private Dictionary<String, Dictionary<String, String[]>> _primaryProperties;
 		private Dictionary<String, Dictionary<String, String[]>> primaryProperties {
@@ -25,7 +23,7 @@ namespace HeroesDB {
 					Debug.WriteLine("primaryProperties { get {");
 					Debug.Indent();
 					var properties = new Dictionary<String, Dictionary<String, String[]>>();
-					using (var connection = new SQLiteConnection(this.connectionString)) {
+					using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 						connection.Open();
 						var command = connection.CreateCommand();
 						command.CommandText = @"
@@ -59,11 +57,10 @@ namespace HeroesDB {
 			}
 		}
 
-		public Exporter(String databaseFile, String outputPath) {
-			Debug.WriteLine("Exporter({0}, {1}) {{", new [] { databaseFile, outputPath });
+		public Exporter(Config config) {
+			Debug.WriteLine("Exporter() {");
 			Debug.Indent();
-			this.connectionString = String.Format("Data Source={0}; Version=3;", databaseFile);
-			this.outputPath = outputPath;
+			this.config = config;
 			Debug.Unindent();
 			Debug.WriteLine("}");
 		}
@@ -81,7 +78,7 @@ namespace HeroesDB {
 		public void ExportCharacters() {
 			Debug.WriteLine("ExportCharacters() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -109,7 +106,7 @@ namespace HeroesDB {
 				}
 				var serializer = new JavaScriptSerializer();
 				var json = serializer.Serialize(characters);
-				var path = Path.Combine(this.outputPath, "characters.json");
+				var path = Path.Combine(this.config.ExportPath, "characters.json");
 				File.WriteAllText(path, json);
 			}
 			Debug.Unindent();
@@ -119,7 +116,7 @@ namespace HeroesDB {
 		public void ExportClassification() {
 			Debug.WriteLine("ExportClassification() {");
 			Debug.Indent();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -185,7 +182,7 @@ namespace HeroesDB {
 				};
 				var serializer = new JavaScriptSerializer();
 				var json = serializer.Serialize(classification);
-				var path = Path.Combine(this.outputPath, "classification.json");
+				var path = Path.Combine(this.config.ExportPath, "classification.json");
 				File.WriteAllText(path, json);
 			}
 			Debug.Unindent();
@@ -195,18 +192,18 @@ namespace HeroesDB {
 		public void ExportQualityTypes() {
 			Debug.WriteLine("ExportQualityTypes() {");
 			Debug.Indent();
-			var path = Path.Combine(this.outputPath, "quality-types");
+			var path = Path.Combine(this.config.ExportPath, "quality-types");
 			if (!Directory.Exists(path)) {
 				Directory.CreateDirectory(path);
 			}
 			var serializer = new JavaScriptSerializer();
 			Action<String, Dictionary<String, Dictionary<String, Object>>> serialize = (key, qualityType) => {
 				var json = serializer.Serialize(qualityType);
-				path = Path.Combine(this.outputPath, "quality-types");
+				path = Path.Combine(this.config.ExportPath, "quality-types");
 				path = Path.Combine(path, Path.ChangeExtension(key, "json"));
 				File.WriteAllText(path, json);
 			};
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -252,18 +249,18 @@ namespace HeroesDB {
 		public void ExportEnhanceTypes() {
 			Debug.WriteLine("ExportEnhanceTypes() {");
 			Debug.Indent();
-			var path = Path.Combine(this.outputPath, "enhance-types");
+			var path = Path.Combine(this.config.ExportPath, "enhance-types");
 			if (!Directory.Exists(path)) {
 				Directory.CreateDirectory(path);
 			}
 			var serializer = new JavaScriptSerializer();
-			Action<String, Dictionary<String, Dictionary<String, Object>>> serialize = (key, enhanceType) => {
+			Action<String, Dictionary<String, Object>> serialize = (key, enhanceType) => {
 				var json = serializer.Serialize(enhanceType);
-				path = Path.Combine(this.outputPath, "enhance-types");
+				path = Path.Combine(this.config.ExportPath, "enhance-types");
 				path = Path.Combine(path, Path.ChangeExtension(key, "json"));
 				File.WriteAllText(path, json);
 			};
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -297,7 +294,7 @@ namespace HeroesDB {
 				";
 				var reader = command.ExecuteReader();
 				var previousKey = "";
-				var enhanceType = new Dictionary<String, Dictionary<String, Object>>();
+				var enhanceType = new Dictionary<String, Object>();
 				while (reader.Read()) {
 					var key = Convert.ToString(reader["key"]);
 					if (key != previousKey) {
@@ -327,21 +324,24 @@ namespace HeroesDB {
 							{ "order", 1 }
 						});
 						enhanceType.Add("mats", mats);
+						enhanceType.Add("keys", new List<String>());
 					}
 					var level = Convert.ToString(reader["level"]);
 					if (!enhanceType.ContainsKey(level)) {
+						((List<String>)enhanceType["keys"]).Add(level);
 						var mats = new Dictionary<String, Object>() {
 							{ Convert.ToString(reader["mat1Key"]), reader["mat1Count"] },
 							{ Convert.ToString(reader["mat2Key"]), reader["mat2Count"] },
 							{ Convert.ToString(reader["mat3Key"]), reader["mat3Count"] }
 						};
 						enhanceType.Add(level, new Dictionary<String, Object>() {
+							{ "level", reader["level"] },
 							{ "chance", reader["chance"] },
 							{ "risk", reader["risk"] },
 							{ "mats", mats }
 						});
 					}
-					enhanceType[level].Add(Convert.ToString(reader["property"]), reader["improvement"]);
+					((Dictionary<String, Object>)enhanceType[level]).Add(Convert.ToString(reader["property"]), reader["improvement"]);
 				}
 				if (enhanceType.Count > 0) {
 					serialize(previousKey, enhanceType);
@@ -352,8 +352,8 @@ namespace HeroesDB {
 			Debug.WriteLine("}");
 		}
 
-		public void ExportIcons(String fromPath) {
-			Debug.WriteLine("ExportIcons({0}) {{", new [] { fromPath });
+		public void ExportIcons() {
+			Debug.WriteLine("ExportIcons() {");
 			Debug.Indent();
 			/*
 			SELECT
@@ -376,83 +376,11 @@ namespace HeroesDB {
 			GROUP BY t.Material
 			ORDER BY COUNT(*) DESC;
 			*/
-			var path = Path.Combine(this.outputPath, "icons");
+			var path = Path.Combine(this.config.ExportPath, "icons");
 			Directory.CreateDirectory(path);
-			var materials = new Dictionary<String, Color>() {
-				{ "metal", Color.FromArgb(204, 204, 204) },
-				{ "metal_dark", Color.FromArgb(148, 152, 155) },
-				{ "metal_silver_ex", Color.FromArgb(243, 241, 238) },
-				{ "leather_dark", Color.FromArgb(73, 0, 2) },
-				{ "leather", Color.FromArgb(162, 78, 4) },
-				{ "metal_gold_ex", Color.FromArgb(218, 179, 0) },
-				{ "metal_luxury", Color.FromArgb(221, 205, 204) },
-				{ "metal_gold", Color.FromArgb(212, 174, 55) },
-				{ "cloth_dark", Color.FromArgb(186, 171, 170) },
-				{ "cloth_bw", Color.FromArgb(243, 240, 240) },
-				{ "cloth", Color.FromArgb(222, 213, 213) },
-				{ "metal_colorful", Color.FromArgb(188, 198, 204) },
-				{ "leather_colorful", Color.FromArgb(212, 134, 134) },
-				{ "rainbow", Color.FromArgb(229, 6, 102) },
-				{ "metal_bronze", Color.FromArgb(166, 152, 131) },
-				{ "skull", Color.FromArgb(247, 249, 243) },
-				{ "leather_brown", Color.FromArgb(202, 172, 140) },
-				{ "white", Color.FromArgb(255, 255, 255) },
-				{ "leather_enamel", Color.FromArgb(246, 246, 247) },
-				{ "cloth_bright", Color.FromArgb(217, 233, 244) },
-				{ "black", Color.FromArgb(0, 0, 0) },
-				{ "leather_crimson", Color.FromArgb(211, 8, 8) },
-				{ "weapon_edge", Color.FromArgb(230, 229, 232) },
-				{ "silk", Color.FromArgb(252, 253, 244) },
-				{ "wood", Color.FromArgb(187, 163, 125) },
-				{ "gray_brown", Color.FromArgb(120, 111, 106) },
-				{ "metal_red", Color.FromArgb(109, 13, 15) },
-				{ "innerarmor", Color.FromArgb(252, 245, 198) },
-				{ "gray", Color.FromArgb(153, 153, 153) },
-				{ "leather_red", Color.FromArgb(124, 29, 32) },
-				{ "frame_red", Color.FromArgb(244, 30, 8) },
-				{ "nightmare", Color.FromArgb(124, 58, 73) },
-				{ "leather_glasgavelen", Color.FromArgb(102, 99, 51) },
-				{ "chinese", Color.FromArgb(255, 89, 0) },
-				{ "fur_mono", Color.FromArgb(255, 250, 227) },
-				{ "leaf_green", Color.FromArgb(168, 210, 110) },
-				{ "leather_flatbrown", Color.FromArgb(166, 144, 121) },
-				{ "flat_red", Color.FromArgb(255, 70, 24) },
-				{ "laghodessa", Color.FromArgb(144, 166, 5) },
-				{ "cloth_santa", Color.FromArgb(230, 31, 45) },
-				{ "giantspider", Color.FromArgb(141, 134, 108) },
-				{ "beard", Color.FromArgb(180, 153, 127) },
-				{ "fix_bluechannel", Color.FromArgb(2, 93, 140) },
-				{ "fix_greenchannel", Color.FromArgb(27, 175, 27) },
-				{ "fix_redchannel", Color.FromArgb(240, 35, 17) },
-				{ "red_strawberry", Color.FromArgb(242, 58, 101) },
-				{ "flat_white", Color.FromArgb(239, 232, 215) },
-				{ "leather_wonderland", Color.FromArgb(238, 12, 73) },
-				{ "flat_black", Color.FromArgb(50, 48, 41) },
-				{ "flat_pumpkin", Color.FromArgb(255, 155, 0) },
-				{ "brown", Color.FromArgb(96, 72, 48) },
-				{ "champagne_gold", Color.FromArgb(246, 236, 177) },
-				{ "military", Color.FromArgb(128, 128, 93) },
-				{ "flat_devcatorange", Color.FromArgb(255, 153, 0) },
-				{ "flat_gray", Color.FromArgb(182, 177, 175) },
-				{ "korean", Color.FromArgb(214, 30, 0) },
-				{ "crystal", Color.FromArgb(192, 255, 255) },
-				{ "crystal_blue", Color.FromArgb(66, 171, 236) },
-				{ "event_rabbit_moon_C1", Color.FromArgb(249, 250, 198) },
-				{ "flat_pumpkinlumi", Color.FromArgb(233, 128, 66) },
-				{ "flat_volcanicred", Color.FromArgb(150, 27, 22) },
-				{ "bloodlord", Color.FromArgb(247, 90, 66) },
-				{ "cash_angelring", Color.FromArgb(255, 234, 232) },
-				{ "darkblue", Color.FromArgb(8, 55, 105) },
-				{ "event_euro2012_lower", Color.FromArgb(233, 255, 255) },
-				{ "flat_bandage", Color.FromArgb(218, 191, 180) },
-				{ "flat_bloodyred", Color.FromArgb(178, 55, 7) },
-				{ "flat_camelbrown", Color.FromArgb(206, 175, 138) },
-				{ "flat_milkypink", Color.FromArgb(235, 167, 174) },
-				{ "flat_smoketurquoise", Color.FromArgb(114, 165, 169) }
-			};
-			var icon = Paloma.TargaImage.LoadTargaImage(Path.Combine(fromPath, "blank.tga"));
-			icon.Save(Path.Combine(this.outputPath, "icons", "0.png"));
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			var icon = Paloma.TargaImage.LoadTargaImage(Path.Combine(this.config.IconImportPath, "blank.tga"));
+			icon.Save(Path.Combine(this.config.ExportPath, "icons", "0.png"));
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -471,7 +399,7 @@ namespace HeroesDB {
 				var reader = command.ExecuteReader();
 				while (reader.Read()) {
 					var iconFileName = String.Concat(reader["icon"], ".tga");
-					var iconFile = Path.Combine(fromPath, iconFileName);
+					var iconFile = Path.Combine(this.config.IconImportPath, iconFileName);
 					if (File.Exists(iconFile)) {
 						Debug.Write(".");
 						icon = Paloma.TargaImage.LoadTargaImage(iconFile);
@@ -488,17 +416,17 @@ namespace HeroesDB {
 									var brightness = 1.0;
 									if (reader["material1"] != DBNull.Value && color.R > color.G && color.R > color.B) {
 										var material = Convert.ToString(reader["material1"]);
-										baseColor = materials.ContainsKey(material) ? materials[material] : Color.FromArgb(204, 204, 204);
+										baseColor = this.config.Materials.ContainsKey(material) ? this.config.Materials[material] : Color.FromArgb(204, 204, 204);
 										brightness = Convert.ToDouble(color.R) / 255;
 									}
 									else if (reader["material2"] != DBNull.Value && color.G > color.R && color.G > color.B) {
 										var material = Convert.ToString(reader["material2"]);
-										baseColor = materials.ContainsKey(material) ? materials[material] : Color.FromArgb(153, 153, 153);
+										baseColor = this.config.Materials.ContainsKey(material) ? this.config.Materials[material] : Color.FromArgb(153, 153, 153);
 										brightness = Convert.ToDouble(color.G) / 255;
 									}
 									else if (reader["material3"] != DBNull.Value && color.B > color.R && color.B > color.G) {
 										var material = Convert.ToString(reader["material3"]);
-										baseColor = materials.ContainsKey(material) ? materials[material] : Color.FromArgb(102, 102, 102);
+										baseColor = this.config.Materials.ContainsKey(material) ? this.config.Materials[material] : Color.FromArgb(102, 102, 102);
 										brightness = Convert.ToDouble(color.B) / 255;
 									}
 									if (baseColor != color) {
@@ -508,7 +436,7 @@ namespace HeroesDB {
 								}
 							}
 						}
-						icon.Save(Path.Combine(this.outputPath, "icons", String.Concat(reader["id"], ".png")));
+						icon.Save(Path.Combine(this.config.ExportPath, "icons", String.Concat(reader["id"], ".png")));
 					}
 				}
 				Debug.WriteLine("");
@@ -520,12 +448,12 @@ namespace HeroesDB {
 		public void ExportMats() {
 			Debug.WriteLine("ExportMats() {");
 			Debug.Indent();
-			var path = Path.Combine(this.outputPath, "objects", "mats");
+			var path = Path.Combine(this.config.ExportPath, "objects", "mats");
 			if (!Directory.Exists(path)) {
 				Directory.CreateDirectory(path);
 			}
 			var serializer = new JavaScriptSerializer();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -552,7 +480,7 @@ namespace HeroesDB {
 						}
 					}
 					var json = serializer.Serialize(mat);
-					path = Path.Combine(this.outputPath, "objects", "mats");
+					path = Path.Combine(this.config.ExportPath, "objects", "mats");
 					path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(reader["key"]), "json"));
 					File.WriteAllText(path, json);
 				}
@@ -565,12 +493,12 @@ namespace HeroesDB {
 		public void ExportEquips() {
 			Debug.WriteLine("ExportEquips() {");
 			Debug.Indent();
-			var path = Path.Combine(this.outputPath, "objects", "equips");
+			var path = Path.Combine(this.config.ExportPath, "objects", "equips");
 			if (!Directory.Exists(path)) {
 				Directory.CreateDirectory(path);
 			}
 			var serializer = new JavaScriptSerializer();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				var shops = new Dictionary<String, List<Dictionary<String, Object>>>();
@@ -630,15 +558,20 @@ namespace HeroesDB {
 					}
 					if (!recipes[equipKey].ContainsKey(type)) {
 						recipes[equipKey].Add(type, new Dictionary<String, Object>());
-						if (reader["appearQuestName"] != DBNull.Value) {
-							recipes[equipKey][type].Add("appearQuestName", reader["appearQuestName"]);
-						}
-						if (reader["expertiseName"] != DBNull.Value) {
-							recipes[equipKey][type].Add("expertiseName", reader["expertiseName"]);
-							recipes[equipKey][type].Add("expertiseExperienceRequired", reader["expertiseExperienceRequired"]);
-						}
-						if (type == "npc" && shops.ContainsKey(equipKey)) {
+						if (type == "npc") {
+							var appearQuestNames = reader["appearQuestName"] == DBNull.Value ? new String[0] : new [] { Convert.ToString(reader["appearQuestName"]) };
+							recipes[equipKey][type].Add("appearQuestNames", appearQuestNames);
 							recipes[equipKey][type].Add("shops", shops[equipKey]);
+						}
+						else if (type == "pc") {
+							var expertises = new List<Object>();
+							if (reader["expertiseName"] != DBNull.Value) {
+								expertises.Add(new Dictionary<String, Object>() {
+									{"name", reader["expertiseName"] },
+									{"experienceRequired", reader["expertiseExperienceRequired"] }
+								});
+							}
+							recipes[equipKey][type].Add("expertises", expertises);
 						}
 					}
 					if (!recipes[equipKey][type].ContainsKey("mats")) {
@@ -724,7 +657,7 @@ namespace HeroesDB {
 					if (lastRow || !sameType) {
 						Debug.Write(".");
 						var json = serializer.Serialize(equips);
-						path = Path.Combine(this.outputPath, "objects");
+						path = Path.Combine(this.config.ExportPath, "objects");
 						path = Path.Combine(path, Path.ChangeExtension(String.Concat(row["groupKey"], "-", row["typeKey"]), "json"));
 						File.WriteAllText(path, json);
 						equips = new List<Dictionary<String, Object>>();
@@ -773,11 +706,10 @@ namespace HeroesDB {
 								break;
 						}
 					}
-					if (recipes.ContainsKey(Convert.ToString(row["key"]))) {
-						equip.Add("recipes", recipes[Convert.ToString(row["key"])]);
-					}
+					var key = Convert.ToString(row["key"]);
+					equip.Add("recipes", recipes.ContainsKey(key) ? recipes[key] : null);
 					var json = serializer.Serialize(equip);
-					path = Path.Combine(this.outputPath, "objects", "equips");
+					path = Path.Combine(this.config.ExportPath, "objects", "equips");
 					path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(row["key"]), "json"));
 					File.WriteAllText(path, json);
 				}
@@ -790,12 +722,12 @@ namespace HeroesDB {
 		public void ExportSets() {
 			Debug.WriteLine("ExportSets() {");
 			Debug.Indent();
-			var path = Path.Combine(this.outputPath, "objects", "sets");
+			var path = Path.Combine(this.config.ExportPath, "objects", "sets");
 			if (!Directory.Exists(path)) {
 				Directory.CreateDirectory(path);
 			}
 			var serializer = new JavaScriptSerializer();
-			using (var connection = new SQLiteConnection(this.connectionString)) {
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
 				command.CommandText = @"
@@ -971,7 +903,7 @@ namespace HeroesDB {
 					if (lastRow || !sameType) {
 						Debug.Write(".");
 						var json = serializer.Serialize(sets);
-						path = Path.Combine(this.outputPath, "objects");
+						path = Path.Combine(this.config.ExportPath, "objects");
 						path = Path.Combine(path, Path.ChangeExtension(String.Concat(row["groupKey"], "-", row["typeKey"]), "json"));
 						File.WriteAllText(path, json);
 						sets = new List<Dictionary<String, Object>>();
@@ -990,7 +922,7 @@ namespace HeroesDB {
 					set.Add("requiredSkills", requiredSkills.ContainsKey(key) ? requiredSkills[key] : new List<Dictionary<String, Object>>());
 					set.Add("effects", effects[key]);
 					var json = serializer.Serialize(set);
-					path = Path.Combine(this.outputPath, "objects", "sets");
+					path = Path.Combine(this.config.ExportPath, "objects", "sets");
 					path = Path.Combine(path, Path.ChangeExtension(key, "json"));
 					File.WriteAllText(path, json);
 				}
@@ -1000,10 +932,10 @@ namespace HeroesDB {
 			Debug.WriteLine("}");
 		}
 
-		public void ExportSitemap(String toPath) {
+		public void ExportSitemap() {
 			Debug.WriteLine("ExportSitemap() {");
 			Debug.Indent();
-			using (var xml = XmlWriter.Create(Path.Combine(toPath, "sitemap.xml"))) {
+			using (var xml = XmlWriter.Create(Path.Combine(this.config.WwwPath, "sitemap.xml"))) {
 				xml.WriteStartElement("urlset", "http://www.sitemaps.org/schemas/sitemap/0.9");
 				Action<String, DateTime, Double> writeUrl = (loc, lastmod, priority) => {
 					xml.WriteStartElement("url");
@@ -1014,10 +946,10 @@ namespace HeroesDB {
 					xml.WriteEndElement();
 				};
 				var url = "";
-				var urlFile = Path.Combine(this.outputPath, "classification.json");
+				var urlFile = Path.Combine(this.config.ExportPath, "classification.json");
 				writeUrl(url, File.GetLastWriteTime(urlFile), 1);
 				Debug.WriteLine(".");
-				using (var connection = new SQLiteConnection(this.connectionString)) {
+				using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 					connection.Open();
 					var command = connection.CreateCommand();
 					command.CommandText = @"
@@ -1035,7 +967,7 @@ namespace HeroesDB {
 					var reader = command.ExecuteReader();
 					while (reader.Read()) {
 						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"]);
-						urlFile = Path.Combine(this.outputPath, "objects", Path.ChangeExtension(String.Concat(reader["GroupKey"], "-", reader["TypeKey"]), ".json"));
+						urlFile = Path.Combine(this.config.ExportPath, "objects", Path.ChangeExtension(String.Concat(reader["GroupKey"], "-", reader["TypeKey"]), ".json"));
 						writeUrl(url, File.GetLastWriteTime(urlFile), 0.9);
 						Debug.Write(".");
 					}
@@ -1059,7 +991,7 @@ namespace HeroesDB {
 					reader = command.ExecuteReader();
 					while (reader.Read()) {
 						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"], "/", reader["CategoryKey"]);
-						urlFile = Path.Combine(this.outputPath, "objects", Path.ChangeExtension(String.Concat(reader["GroupKey"], "-", reader["TypeKey"]), ".json"));
+						urlFile = Path.Combine(this.config.ExportPath, "objects", Path.ChangeExtension(String.Concat(reader["GroupKey"], "-", reader["TypeKey"]), ".json"));
 						writeUrl(url, File.GetLastWriteTime(urlFile), 0.8);
 						Debug.Write(".");
 					}
@@ -1081,7 +1013,7 @@ namespace HeroesDB {
 					reader = command.ExecuteReader();
 					while (reader.Read()) {
 						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"], "/", reader["CategoryKey"], "/", reader["Key"], ".equip");
-						urlFile = Path.Combine(this.outputPath, "objects", "equips", Path.ChangeExtension(Convert.ToString(reader["Key"]), ".json"));
+						urlFile = Path.Combine(this.config.ExportPath, "objects", "equips", Path.ChangeExtension(Convert.ToString(reader["Key"]), ".json"));
 						writeUrl(url, File.GetLastWriteTime(urlFile), 0.7);
 						Debug.Write(".");
 					}
@@ -1102,7 +1034,7 @@ namespace HeroesDB {
 					reader = command.ExecuteReader();
 					while (reader.Read()) {
 						url = String.Concat("items", "/", reader["GroupKey"], "/", reader["TypeKey"], "/", reader["Key"], ".set");
-						urlFile = Path.Combine(this.outputPath, "objects", "sets", Path.ChangeExtension(Convert.ToString(reader["Key"]), ".json"));
+						urlFile = Path.Combine(this.config.ExportPath, "objects", "sets", Path.ChangeExtension(Convert.ToString(reader["Key"]), ".json"));
 						writeUrl(url, File.GetLastWriteTime(urlFile), 0.7);
 						Debug.Write(".");
 					}

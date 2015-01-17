@@ -6,37 +6,36 @@ namespace HeroesDB {
 
 	class Program {
 
-		const String DatabaseFile = @"D:\HeroesDB\hfs\heroes.db3.comp";
-
 		public static void Main(String[] args) {
 			Debug.Listeners.Add(new TextWriterTraceListener(Console.Out));
 			Debug.WriteLine("Main() {");
 			Debug.Indent();
 			try {
+				var cfg = new Config();
 				var ext = new Extractor();
-				var stp = new Setuper(DatabaseFile);
-				stp.ImportText(@"D:\HeroesDB\hfs\heroes_text_english_eu.txt");
+				var stp = new Setuper(cfg);
+				stp.ImportText();
 				stp.SetFeaturedItems();
 				stp.SetFeaturedEquips();
 				stp.SetFeaturedRecipes();
 				stp.SetClassification();
-				stp.SetIcons(@"D:\HeroesDB\hfs\icons");
+				stp.SetIcons();
 				stp.SetCharacters();
 				stp.SetMats();
 				stp.SetQualityTypes();
 				stp.SetEnhanceTypes();
 				stp.SetEquips();
 				stp.SetSets();
-				var exp = new Exporter(DatabaseFile, @"D:\HeroesDB\www\data\");
+				var exp = new Exporter(cfg);
 				exp.ExportClassification();
-				exp.ExportIcons(@"D:\HeroesDB\hfs\icons");
+				exp.ExportIcons();
 				exp.ExportCharacters();
 				exp.ExportMats();
 				exp.ExportQualityTypes();
 				exp.ExportEnhanceTypes();
 				exp.ExportEquips();
 				exp.ExportSets();
-				exp.ExportSitemap(@"D:\HeroesDB\www\");
+				exp.ExportSitemap();
 			}
 			catch (Exception exception) {
 				Debug.WriteLine(exception.Source);
