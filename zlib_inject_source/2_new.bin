@@ -1,0 +1,117 @@
+"costume"
+{
+	"base"
+	{
+		"sn"		"1"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"inner_armor"
+	{
+		"sn"		"41"
+		"color"		"16810895 19079971 21053761"
+		"pollution"		"0"
+	}
+	"face"
+	{
+		"sn"		"10"
+		"color"		"15583917 8986656 4808581"
+		"pollution"		"0"
+	}
+	"hair"
+	{
+		"sn"		"6010"
+		"color"		"10385503 21049649 13158600"
+		"pollution"		"0"
+	}
+	"upper_body"
+	{
+		"sn"		"{{tunic}}"
+		"color"		"{{tunic_color1}} {{tunic_color2}} {{tunic_color3}}"
+		"pollution"		"0"
+	}
+	"lower_body"
+	{
+		"sn"		"{{pants}}"
+		"color"		"{{pants_color1}} {{pants_color2}} {{pants_color3}}"
+		"pollution"		"0"
+	}
+	"head"
+	{
+		"sn"		"{{helm}}"
+		"color"		"{{helm_color1}} {{helm_color2}} {{helm_color3}}"
+		"pollution"		"0"
+	}
+	"foot"
+	{
+		"sn"		"{{boots}}"
+		"color"		"{{boots_color1}} {{boots_color2}} {{boots_color3}}"
+		"pollution"		"0"
+	}
+	"hand"
+	{
+		"sn"		"{{gloves}}"
+		"color"		"{{gloves_color1}} {{gloves_color2}} {{gloves_color3}}"
+		"pollution"		"0"
+	}
+	"motion"
+	{
+		"sn"		"10"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"eyebrows"
+	{
+		"sn"		"2"
+		"color"		"11630670 32768 128"
+	}
+	"makeup"
+	{
+		"sn"		"4"
+		"color"		"16744576 8388608 7091766"
+	}
+	"painting"
+	{
+		"sn"		"-1"
+		"color"		"26315453 28854840 21915517"
+	}
+	"scar"
+	{
+		"sn"		"-1"
+		"color"		"0 0 0"
+	}
+	"beard"
+	{
+		"sn"		"-1"
+		"color"		"33545384 32768 16777344"
+	}
+	"piercing"
+	{
+		"sn"		"-1"
+		"color"		"0 0 0"
+	}
+	"face_paint_rotate"		"0"
+	"face_paint_pos_x"		"73"
+	"face_paint_pos_y"		"100"
+	"face_paint_scale"		"22"
+	"face_shineness"		"3"
+	"body_painting"
+	{
+		"sn"		"-1"
+		"color"		"-8355712 -8355712 -8355712"
+	}
+	"body_paint_surface_side"		"0"
+	"body_paint_rotate"		"52"
+	"body_paint_pos_x"		"85"
+	"body_paint_pos_y"		"60"
+	"body_paint_scale"		"16"
+	"body_paint_clip"		"0"
+	"body_paint_blend"		"0"
+	"weapon"
+	{
+		"name"		"{{weapon_type}}"
+		"sub_type"		"{{weapon}}"
+		"color"		"{{weapon_color1}} {{weapon_color2}} {{weapon_color3}}"
+		"pollution"		"0"
+	}
+}

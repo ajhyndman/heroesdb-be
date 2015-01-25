@@ -1,0 +1,123 @@
+"costume"
+{
+	"base"
+	{
+		"sn"		"1"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"inner_armor"
+	{
+		"sn"		"17"
+		"color"		"28159405 28159405 32379477"
+		"pollution"		"0"
+	}
+	"face"
+	{
+		"sn"		"10"
+		"color"		"16775155 16711680 4808581"
+		"pollution"		"0"
+	}
+	"hair"
+	{
+		"sn"		"2024"
+		"color"		"28685170 13158600 13158600"
+		"pollution"		"0"
+	}
+	"upper_body"
+	{
+		"sn"		"275"
+		"color"		"30457505 19802923 18816027"
+		"pollution"		"0"
+	}
+	"lower_body"
+	{
+		"sn"		"275"
+		"color"		"28417918 19210013 22352145"
+		"pollution"		"0"
+	}
+	"head"
+	{
+		"sn"		"275"
+		"color"		"30919871 30058367 24196405"
+		"pollution"		"0"
+	}
+	"foot"
+	{
+		"sn"		"275"
+		"color"		"26381963 22368848 16777216"
+		"pollution"		"0"
+	}
+	"hand"
+	{
+		"sn"		"275"
+		"color"		"25856650 23614277 16777216"
+		"pollution"		"0"
+	}
+	"motion"
+	{
+		"sn"		"10"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"eyebrows"
+	{
+		"sn"		"9"
+		"color"		"9068869 32768 128"
+	}
+	"makeup"
+	{
+		"sn"		"0"
+		"color"		"21251662 603485004 27494309"
+	}
+	"painting"
+	{
+		"sn"		"-1"
+		"color"		"26315453 28854840 21915517"
+	}
+	"scar"
+	{
+		"sn"		"-1"
+		"color"		"0 0 0"
+	}
+	"beard"
+	{
+		"sn"		"-1"
+		"color"		"33545384 32768 16777344"
+	}
+	"piercing"
+	{
+		"sn"		"-1"
+		"color"		"0 0 0"
+	}
+	"face_paint_rotate"		"0"
+	"face_paint_pos_x"		"73"
+	"face_paint_pos_y"		"100"
+	"face_paint_scale"		"22"
+	"face_shineness"		"3"
+	"body_painting"
+	{
+		"sn"		"-1"
+		"color"		"-8355712 -8355712 -8355712"
+	}
+	"body_paint_surface_side"		"0"
+	"body_paint_rotate"		"0"
+	"body_paint_pos_x"		"100"
+	"body_paint_pos_y"		"100"
+	"body_paint_scale"		"50"
+	"body_paint_clip"		"0"
+	"body_paint_blend"		"0"
+	"weapon"
+	{
+		"name"		"weapon_hammer"
+		"sub_type"		"95"
+		"color"		"29469585 22105934 24670832"
+		"pollution"		"0"
+	}
+	"shield"
+	{
+		"name"		"models/weapon/largeshield/largeshield_s2ep2_heremon.mdl"
+		"color"		"26644355 19803180 662732928"
+		"pollution"		"0"
+	}
+}

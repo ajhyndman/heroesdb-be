@@ -1,0 +1,123 @@
+"costume"
+{
+	"base"
+	{
+		"sn"		"8"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"inner_armor"
+	{
+		"sn"		"1019"
+		"color"		"15722457 16810895 2766180"
+		"pollution"		"0"
+	}
+	"face"
+	{
+		"sn"		"80"
+		"color"		"32696809 33498405 27372506"
+		"pollution"		"0"
+	}
+	"hair"
+	{
+		"sn"		"6042"
+		"color"		"20725834 16810895 6448750"
+		"pollution"		"255"
+	}
+	"upper_body"
+	{
+		"sn"		"{{tunic}}"
+		"color"		"{{tunic_color1}} {{tunic_color2}} {{tunic_color3}}"
+		"pollution"		"0"
+	}
+	"lower_body"
+	{
+		"sn"		"{{pants}}"
+		"color"		"{{pants_color1}} {{pants_color2}} {{pants_color3}}"
+		"pollution"		"0"
+	}
+	"head"
+	{
+		"sn"		"{{helm}}"
+		"color"		"{{helm_color1}} {{helm_color2}} {{helm_color3}}"
+		"pollution"		"0"
+	}
+	"foot"
+	{
+		"sn"		"{{boots}}"
+		"color"		"{{boots_color1}} {{boots_color2}} {{boots_color3}}"
+		"pollution"		"0"
+	}
+	"hand"
+	{
+		"sn"		"{{gloves}}"
+		"color"		"{{gloves_color1}} {{gloves_color2}} {{gloves_color3}}"
+		"pollution"		"0"
+	}
+	"motion"
+	{
+		"sn"		"80"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"eyebrows"
+	{
+		"sn"		"9001"
+		"color"		"23282494 -1 -1"
+	}
+	"makeup"
+	{
+		"sn"		"15"
+		"color"		"16744576 8388608 8405056"
+	}
+	"painting"
+	{
+		"sn"		"-1"
+		"color"		"-1 -1 -1"
+	}
+	"scar"
+	{
+		"sn"		"-1"
+		"color"		"-1 -1 -1"
+	}
+	"beard"
+	{
+		"sn"		"-1"
+		"color"		"16974338 -1 -1"
+	}
+	"piercing"
+	{
+		"sn"		"-1"
+		"color"		"-8355712 -8355712 -8355712"
+	}
+	"face_paint_rotate"		"0"
+	"face_paint_pos_x"		"0"
+	"face_paint_pos_y"		"0"
+	"face_paint_scale"		"10"
+	"face_shineness"		"3"
+	"body_painting"
+	{
+		"sn"		"-1"
+		"color"		"-1 -1 -1"
+	}
+	"body_paint_surface_side"		"0"
+	"body_paint_rotate"		"0"
+	"body_paint_pos_x"		"0"
+	"body_paint_pos_y"		"0"
+	"body_paint_scale"		"10"
+	"body_paint_clip"		"0"
+	"body_paint_blend"		"0"
+	"weapon"
+	{
+		"name"		"{{weapon_type}}"
+		"sub_type"		"{{weapon}}"
+		"color"		"{{weapon_color1}} {{weapon_color2}} {{weapon_color3}}"
+		"pollution"		"0"
+	}
+	"castlet"
+	{
+		"name"		"models/weapon/castlet/castlet_effect_volt.mdl"
+		"color"		"964722816 964722816 964722816"
+		"pollution"		"0"
+	}
+}

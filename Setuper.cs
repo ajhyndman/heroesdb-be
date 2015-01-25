@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 using System;
+using System.Windows.Forms;
 
 namespace HeroesDB {
 
@@ -1053,6 +1054,46 @@ namespace HeroesDB {
 					LEFT JOIN HDB_Text AS tn ON tn.Key = 'HEROES_NPC_' || UPPER(t.ShopKey);
 				";
 				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EquipScreenshots;
+					CREATE TABLE HDB_EquipScreenshots (
+						EquipKey NVARCHAR NOT NULL,
+						EquipCostumeKey INT,
+						CharacterID INT NOT NULL,
+						Camera NVARCHAR NOT NULL,
+						Ready INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(EquipKey, CharacterID, Camera)
+					);
+					INSERT INTO HDB_EquipScreenshots
+					SELECT
+						e.Key AS EquipKey,
+						NULL AS EquipCostumeKey,
+						c.ID AS CharacterID,
+						CASE
+							WHEN e.CategoryKey = 'dualsword' AND c.ID = 1 THEN '3blocf'
+							WHEN e.CategoryKey = 'dualspear' THEN '3blocf'
+							WHEN e.CategoryKey = 'longsword' THEN '3blocf'
+							WHEN e.CategoryKey = 'hammer' THEN '3blocf'
+							WHEN e.CategoryKey = 'staff' THEN '1frohf'
+							WHEN e.CategoryKey = 'scythe' THEN '1frahf'
+							WHEN e.CategoryKey = 'pillar' THEN '2frocf'
+							WHEN e.CategoryKey = 'blaster' THEN '1dlbcf'
+							WHEN e.CategoryKey = 'bow' THEN '4drocf'
+							WHEN e.CategoryKey = 'crossgun' THEN '1rbocf'
+							WHEN e.CategoryKey = 'dualsword' AND c.ID = 32 THEN '2dbocf'
+							WHEN e.CategoryKey = 'dualblade' THEN '3dfocf'
+							WHEN e.CategoryKey = 'greatsword' THEN '2lfacf'
+							WHEN e.CategoryKey = 'battleglaive' THEN '1dfohf'
+							WHEN e.CategoryKey = 'longblade' THEN '2blocf'
+							ELSE '1frocf'
+						END Camera,
+						0 AS Ready
+					FROM HDB_Equips AS e
+					INNER JOIN EquipItemInfo AS ei ON ei._ROWID_ = e.ID
+					INNER JOIN HDB_Characters AS c ON e.ClassRestriction | c.ID = e.ClassRestriction
+					WHERE e.GroupKey = 'weapon';
+				";
+				command.ExecuteNonQuery();
 				transaction.Commit();
 			}
 			Debug.Unindent();
@@ -1128,7 +1169,9 @@ namespace HeroesDB {
 							c.GroupKey,
 							c.TypeKey
 						FROM HDB_Classification AS c
-						WHERE c.ObjectType = 'set'
+						WHERE
+							c.ObjectType = 'set' AND
+							c.ObjectID NOT IN (76, 176)
 					) AS c
 					INNER JOIN SetInfo AS s ON s._ROWID_ = c.ObjectID
 					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_SETITEM_NAME_' || UPPER(s.SetID)
@@ -1261,7 +1304,7 @@ namespace HeroesDB {
 						sibi.BaseItemClass = siai.ItemClass
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = siai.ItemClass
 					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
-					LEFT JOIN HDB_Equips AS e ON e.Key = i.ItemClass
+					LEFT JOIN HDB_Equips AS e ON e.Key = LOWER(i.ItemClass)
 					LEFT JOIN HDB_Classification AS c ON
 						c.ObjectType = 'equip' AND
 						c.ObjectID = e.ID
@@ -1335,6 +1378,71 @@ namespace HeroesDB {
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_SetScreenshots;
+					CREATE TABLE HDB_SetScreenshots (
+						SetKey NVARCHAR NOT NULL,
+						CharacterID INT NOT NULL,
+						Camera NVARCHAR NOT NULL,
+						Ready INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(SetKey, CharacterID, Camera)
+					);
+					INSERT INTO HDB_SetScreenshots
+					SELECT
+						s.Key AS SetKey,
+						c.ID AS CharacterID,
+						sc.Camera,
+						0 AS Ready
+					FROM HDB_Sets AS s
+					INNER JOIN HDB_Characters AS c ON s.ClassRestriction | c.ID = s.ClassRestriction
+					INNER JOIN (
+						SELECT
+							c.ID AS CharacterID,
+							CASE c.ID
+								WHEN 256 THEN '2dfocf'
+								ELSE '1dfocf'
+							END AS Camera
+						FROM HDB_Characters AS c
+						UNION ALL
+						SELECT
+							c.ID AS CharacterID,
+							CASE c.ID
+								WHEN 256 THEN '2dbocf'
+								ELSE '1dbocf'
+							END AS Camera
+						FROM HDB_Characters AS c
+					) AS sc ON sc.CharacterID = c.ID
+					WHERE s.GroupKey = 'armor';
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_SetScreenshotParts;
+					CREATE TABLE HDB_SetScreenshotParts (
+						SetKey NVARCHAR NOT NULL,
+						CharacterID INT NOT NULL,
+						EquipKey NVARCHAR NOT NULL,
+						EquipCostumeKey INT,
+						CONSTRAINT [unique] UNIQUE(SetKey, CharacterID, EquipKey)
+					);
+					INSERT INTO HDB_SetScreenshotParts
+					SELECT
+						ss.SetKey,
+						ss.CharacterID,
+						sp.EquipKey,
+						NULL AS EquipCostumeKey
+					FROM (
+						SELECT DISTINCT
+							ss.SetKey,
+							ss.CharacterID
+						FROM HDB_SetScreenshots AS ss
+					) AS ss
+					INNER JOIN HDB_SetParts AS sp ON sp.SetKey = ss.SetKey
+					INNER JOIN HDB_Equips AS e ON
+						e.Key = sp.EquipKey AND
+						e.GroupKey IN ('armor', 'weapon') AND
+						e.ClassRestriction = e.ClassRestriction | ss.CharacterID;
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
 					UPDATE HDB_Equips
 					SET
 						SetKey = (
@@ -1351,6 +1459,288 @@ namespace HeroesDB {
 						);
 				";
 				command.ExecuteNonQuery();
+				transaction.Commit();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void SetScreenshots() {
+			Debug.WriteLine("SetScreenshots() {");
+			Debug.Indent();
+			var lines = File.ReadAllLines(Path.Combine(this.config.HfsPath, "player_costume.txt.comp"));
+			var block = new Regex(@"^\s*""(?<key>\w+)""\s*$");
+			var property = new Regex(@"^\s*""(?<key>\w+)""\s*""(?<value>\w*)""\s*$");
+			Func<Int32, Tuple<Int32, Dictionary<String, Object>>> parseNode = null;
+			parseNode = (lineIndex) => {
+				var node = new Dictionary<String, Object>();
+				for (var li = lineIndex; li < lines.Length; li += 1) {
+					var line = lines[li];
+					var comment = line.IndexOf("//");
+					if (comment != -1) {
+						line = line.Substring(0, comment);
+					}
+					var match = block.Match(line);
+					if (match.Success) {
+						for (; li < lines.Length; li += 1) {
+							if (lines[li].Trim() == "{") {
+								var result = parseNode(li);
+								li = result.Item1;
+								node.Add(match.Groups["key"].Value, result.Item2);
+								break;
+							}
+						}
+					}
+					else {
+						match = property.Match(line);
+						if (match.Success) {
+							node.Add(match.Groups["key"].Value, match.Groups["value"].Value);
+						}
+						else if (line.Trim() == "}") {
+							return Tuple.Create(li, node);
+						}
+					}
+				}
+				return Tuple.Create(lines.Length, node);
+			};
+			var document = parseNode(0).Item2;
+			var costumes = new Dictionary<String, Dictionary<String, Dictionary<String, String>>>();
+			var costumeSectionCategories = new Dictionary<String, String> {
+				{ "upper_body", "tunic" },
+				{ "lower_body", "pants" },
+				{ "head", "helm" },
+				{ "foot", "boots" },
+				{ "hand", "gloves" }
+			};
+			foreach (var costumeSectionCategory in costumeSectionCategories) {
+				var costumeSection = costumeSectionCategory.Key;
+				var category = costumeSectionCategory.Value;
+				var costumeSectionNode = (Dictionary<String, Object>)document[costumeSection];
+				foreach (var costume in costumeSectionNode.Keys) {
+					var costumeNode = (Dictionary<String, Object>)costumeSectionNode[costume];
+					var costumeCategory = costumeNode.ContainsKey("category") ? Convert.ToString(costumeNode["category"]) : "";
+					var costumeLabel = Convert.ToString(costumeNode["label"]);
+					if (!costumes.ContainsKey(category)) {
+						costumes.Add(category, new Dictionary<String, Dictionary<String, String>>());
+					}
+					if (!costumes[category].ContainsKey(costumeCategory)) {
+						costumes[category].Add(costumeCategory, new Dictionary<String, String>());
+					}
+					if (costumes[category][costumeCategory].ContainsKey(costumeLabel)) {
+						Debug.WriteLine("duplicate costume: {0}, {1}, {2}, {3}", category, costumeCategory, costumeLabel, costume);
+					}
+					else {
+						costumes[category][costumeCategory].Add(costumeLabel, costume);
+					}
+				}
+			}
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
+				connection.Open();
+				var transaction = connection.BeginTransaction();
+				var command = connection.CreateCommand();
+				command.Transaction = transaction;
+				command.CommandText = @"
+					UPDATE HDB_EquipScreenshots
+					SET
+						EquipCostumeKey = NULL,
+						Ready = 0;
+				";
+				command.ExecuteNonQuery();
+				var updateCommand = connection.CreateCommand();
+				updateCommand.Transaction = transaction;
+				updateCommand.CommandText = @"
+					UPDATE HDB_EquipScreenshots
+					SET
+						EquipCostumeKey = @EquipCostumeKey,
+						Ready = @Ready
+					WHERE
+						HDB_EquipScreenshots.EquipKey = @EquipKey AND
+						HDB_EquipScreenshots.CharacterID = @CharacterID AND
+						HDB_EquipScreenshots.Camera = @Camera;
+				";
+				updateCommand.Parameters.Add("@EquipCostumeKey", DbType.Int32);
+				updateCommand.Parameters.Add("@Ready", DbType.Int32);
+				updateCommand.Parameters.Add("@EquipKey", DbType.String);
+				updateCommand.Parameters.Add("@CharacterID", DbType.Int32);
+				updateCommand.Parameters.Add("@Camera", DbType.String);
+				command.CommandText = @"
+					SELECT
+						es.EquipKey,
+						es.CharacterID,
+						es.Camera,
+						e.GroupKey AS EquipGroupKey,
+						e.CategoryKey AS EquipCategoryKey,
+						ei.CostumeType AS EquipCostumeLabel,
+						CASE
+							WHEN es.CharacterID IN (1, 16) THEN 'male'
+							WHEN es.CharacterID IN (2, 4, 32, 128, 256) THEN 'female'
+							WHEN es.CharacterID IN (8) THEN 'giant'
+							WHEN es.CharacterID IN (64) THEN 'tall'
+						END AS EquipCostumeCategory
+					FROM HDB_EquipScreenshots AS es
+					INNER JOIN HDB_Equips AS e ON e.Key = es.EquipKey
+					INNER JOIN EquipItemInfo AS ei ON ei._ROWID_ = e.ID;
+				";
+				var reader = command.ExecuteReader();
+				var screenshotPath = Path.Combine(this.config.RootPath, "screenshots", "equips");
+				var usedScreenshotFiles = new List<String>();
+				while (reader.Read()) {
+					String costume = null;
+					var group = Convert.ToString(reader["EquipGroupKey"]);
+					var category = Convert.ToString(reader["EquipCategoryKey"]);
+					var costumeCategory = Convert.ToString(reader["EquipCostumeCategory"]);
+					var costumeLabel = Convert.ToString(reader["EquipCostumeLabel"]);
+					if (group != "armor") {
+						costume = costumeLabel;
+					}
+					else {
+						if (costumes[category].ContainsKey(costumeCategory) && costumes[category][costumeCategory].ContainsKey(costumeLabel)) {
+							costume = costumes[category][costumeCategory][costumeLabel];
+						}
+						else if (costumes[category].ContainsKey("") && costumes[category][""].ContainsKey(costumeLabel)) {
+							costume = costumes[category][""][costumeLabel];
+						}
+						else {
+							Debug.WriteLine("missing costume: {0}, {1}, {2}, {3}", category, costumeCategory, costumeLabel, costume);
+						}
+					}
+					var ready = 0;
+					var screenshotFilename = String.Concat(reader["EquipKey"], "_", reader["CharacterID"], reader["Camera"], ".jpeg");
+					var screenshotFile = Path.Combine(screenshotPath, screenshotFilename);
+					if (File.Exists(screenshotFile)) {
+						ready = 1;
+						usedScreenshotFiles.Add(screenshotFile);
+					}
+					updateCommand.Parameters["@EquipCostumeKey"].Value = costume;
+					updateCommand.Parameters["@Ready"].Value = ready;
+					updateCommand.Parameters["@EquipKey"].Value = reader["EquipKey"];
+					updateCommand.Parameters["@CharacterID"].Value = reader["CharacterID"];
+					updateCommand.Parameters["@Camera"].Value = reader["Camera"];
+					updateCommand.ExecuteNonQuery();
+				}
+				reader.Close();
+				if (Directory.Exists(screenshotPath)) {
+					foreach (var screenshotFile in Directory.GetFiles(screenshotPath)) {
+						if (!usedScreenshotFiles.Contains(screenshotFile)) {
+							File.Delete(screenshotFile);
+						}
+					}
+				}
+				command.CommandText = @"
+					UPDATE HDB_SetScreenshots
+					SET Ready = 0;
+				";
+				command.ExecuteNonQuery();
+				updateCommand = connection.CreateCommand();
+				updateCommand.Transaction = transaction;
+				updateCommand.CommandText = @"
+					UPDATE HDB_SetScreenshots
+					SET Ready = 1
+					WHERE
+						HDB_SetScreenshots.SetKey = @SetKey AND
+						HDB_SetScreenshots.CharacterID = @CharacterID AND
+						HDB_SetScreenshots.Camera = @Camera;
+				";
+				updateCommand.Parameters.Add("@SetKey", DbType.String);
+				updateCommand.Parameters.Add("@CharacterID", DbType.Int32);
+				updateCommand.Parameters.Add("@Camera", DbType.String);
+				command.CommandText = @"
+					SELECT
+						ss.SetKey,
+						ss.CharacterID,
+						ss.Camera
+					FROM HDB_SetScreenshots AS ss;
+				";
+				reader = command.ExecuteReader();
+				screenshotPath = Path.Combine(this.config.RootPath, "screenshots", "sets");
+				usedScreenshotFiles.Clear();
+				while (reader.Read()) {
+					var screenshotFilename = String.Concat(reader["SetKey"], "_", reader["CharacterID"], reader["Camera"], ".jpeg");
+					var screenshotFile = Path.Combine(screenshotPath, screenshotFilename);
+					if (File.Exists(screenshotFile)) {
+						usedScreenshotFiles.Add(screenshotFile);
+						updateCommand.Parameters["@SetKey"].Value = reader["SetKey"];
+						updateCommand.Parameters["@CharacterID"].Value = reader["CharacterID"];
+						updateCommand.Parameters["@Camera"].Value = reader["Camera"];
+						updateCommand.ExecuteNonQuery();
+					}
+				}
+				reader.Close();
+				if (Directory.Exists(screenshotPath)) {
+					foreach (var screenshotFile in Directory.GetFiles(screenshotPath)) {
+						if (!usedScreenshotFiles.Contains(screenshotFile)) {
+							File.Delete(screenshotFile);
+						}
+					}
+				}
+				command.CommandText = @"
+					UPDATE HDB_SetScreenshotParts
+					SET EquipCostumeKey = NULL;
+				";
+				command.ExecuteNonQuery();
+				updateCommand = connection.CreateCommand();
+				updateCommand.Transaction = transaction;
+				updateCommand.CommandText = @"
+					UPDATE HDB_SetScreenshotParts
+					SET EquipCostumeKey = @EquipCostumeKey
+					WHERE
+						HDB_SetScreenshotParts.EquipKey = @EquipKey AND
+						HDB_SetScreenshotParts.CharacterID = @CharacterID;
+				";
+				updateCommand.Parameters.Add("@EquipCostumeKey", DbType.Int32);
+				updateCommand.Parameters.Add("@EquipKey", DbType.String);
+				updateCommand.Parameters.Add("@CharacterID", DbType.Int32);
+				command.CommandText = @"
+					SELECT
+						ssp.EquipKey,
+						ss.CharacterID,
+						e.GroupKey AS EquipGroupKey,
+						e.CategoryKey AS EquipCategoryKey,
+						ei.CostumeType AS EquipCostumeLabel,
+						CASE
+							WHEN ss.CharacterID IN (1, 16) THEN 'male'
+							WHEN ss.CharacterID IN (2, 4, 32, 128, 256) THEN 'female'
+							WHEN ss.CharacterID IN (8) THEN 'giant'
+							WHEN ss.CharacterID IN (64) THEN 'tall'
+						END AS EquipCostumeCategory
+					FROM (
+						SELECT DISTINCT
+							ss.SetKey,
+							ss.CharacterID
+						FROM HDB_SetScreenshots AS ss
+					) AS ss
+					INNER JOIN HDB_SetScreenshotParts AS ssp ON
+						ssp.SetKey = ss.SetKey AND
+						ssp.CharacterID = ss.CharacterID
+					INNER JOIN HDB_Equips AS e ON e.Key = ssp.EquipKey
+					INNER JOIN EquipItemInfo AS ei ON ei._ROWID_ = e.ID;
+				";
+				reader = command.ExecuteReader();
+				while (reader.Read()) {
+					String costume = null;
+					var group = Convert.ToString(reader["EquipGroupKey"]);
+					var category = Convert.ToString(reader["EquipCategoryKey"]);
+					var costumeCategory = Convert.ToString(reader["EquipCostumeCategory"]);
+					var costumeLabel = Convert.ToString(reader["EquipCostumeLabel"]);
+					if (group != "armor") {
+						costume = costumeLabel;
+					}
+					else {
+						if (costumes[category].ContainsKey(costumeCategory) && costumes[category][costumeCategory].ContainsKey(costumeLabel)) {
+							costume = costumes[category][costumeCategory][costumeLabel];
+						}
+						else if (costumes[category].ContainsKey("") && costumes[category][""].ContainsKey(costumeLabel)) {
+							costume = costumes[category][""][costumeLabel];
+						}
+						else {
+							Debug.WriteLine("missing costume: {0}, {1}, {2}, {3}", category, costumeCategory, costumeLabel, costume);
+						}
+					}
+					updateCommand.Parameters["@EquipCostumeKey"].Value = costume;
+					updateCommand.Parameters["@EquipKey"].Value = reader["EquipKey"];
+					updateCommand.Parameters["@CharacterID"].Value = reader["CharacterID"];
+					updateCommand.ExecuteNonQuery();
+				}
 				transaction.Commit();
 			}
 			Debug.Unindent();

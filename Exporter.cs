@@ -355,27 +355,6 @@ namespace HeroesDB {
 		public void ExportIcons() {
 			Debug.WriteLine("ExportIcons() {");
 			Debug.Indent();
-			/*
-			SELECT
-				t.Material,
-				COUNT(*)
-			FROM (
-				SELECT ico.Material1 as Material
-				FROM HDB_Item AS i
-				INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
-				UNION ALL
-				SELECT ico.Material2
-				FROM HDB_Item AS i
-				INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
-				UNION ALL
-				SELECT ico.Material3
-				FROM HDB_Item AS i
-				INNER JOIN HDB_Icon AS ico ON ico._ROWID_ = i.IconID
-			) AS t
-			WHERE t.material IS NOT NULL
-			GROUP BY t.Material
-			ORDER BY COUNT(*) DESC;
-			*/
 			var path = Path.Combine(this.config.ExportPath, "icons");
 			Directory.CreateDirectory(path);
 			var icon = Paloma.TargaImage.LoadTargaImage(Path.Combine(this.config.IconImportPath, "blank.tga"));
@@ -414,23 +393,26 @@ namespace HeroesDB {
 									var color = icon.GetPixel(x, y);
 									var baseColor = color;
 									var brightness = 1.0;
+									var material1Key = Convert.ToString(reader["material1"]);
+									var material2Key = Convert.ToString(reader["material2"]);
+									var material3Key = Convert.ToString(reader["material3"]);
+									var material1Index = 0;
+									var material2Index = material2Key == material1Key ? 1 : 0;
+									var material3Index = material3Key == material1Key && material3Key == material2Key ? 2 : (material3Key == material1Key || material3Key == material2Key ? 1 : 0);
 									if (reader["material1"] != DBNull.Value && color.R > color.G && color.R > color.B) {
-										var material = Convert.ToString(reader["material1"]);
-										baseColor = this.config.Materials.ContainsKey(material) ? this.config.Materials[material] : Color.FromArgb(204, 204, 204);
+										baseColor = this.config.Materials[material1Key][material1Index];
 										brightness = Convert.ToDouble(color.R) / 255;
 									}
 									else if (reader["material2"] != DBNull.Value && color.G > color.R && color.G > color.B) {
-										var material = Convert.ToString(reader["material2"]);
-										baseColor = this.config.Materials.ContainsKey(material) ? this.config.Materials[material] : Color.FromArgb(153, 153, 153);
+										baseColor = this.config.Materials[material2Key][material2Index];
 										brightness = Convert.ToDouble(color.G) / 255;
 									}
 									else if (reader["material3"] != DBNull.Value && color.B > color.R && color.B > color.G) {
-										var material = Convert.ToString(reader["material3"]);
-										baseColor = this.config.Materials.ContainsKey(material) ? this.config.Materials[material] : Color.FromArgb(102, 102, 102);
+										baseColor = this.config.Materials[material3Key][material3Index];
 										brightness = Convert.ToDouble(color.B) / 255;
 									}
 									if (baseColor != color) {
-										var newColor = Color.FromArgb(Convert.ToInt32(baseColor.R * brightness), Convert.ToInt32(baseColor.G * brightness), Convert.ToInt32(baseColor.B * brightness));;
+										var newColor = Color.FromArgb(Convert.ToInt32(baseColor.R * brightness), Convert.ToInt32(baseColor.G * brightness), Convert.ToInt32(baseColor.B * brightness));
 										icon.SetPixel(x, y, newColor);
 									}
 								}
@@ -485,6 +467,50 @@ namespace HeroesDB {
 					File.WriteAllText(path, json);
 				}
 				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void ExportScreenshots() {
+			Debug.WriteLine("ExportScreenshots() {");
+			Debug.Indent();
+			foreach (var objectTypeDirectory in new [] { "equips", "sets" }) {
+				Debug.WriteLine(objectTypeDirectory);
+				var inputPath = Path.Combine(this.config.RootPath, "screenshots", objectTypeDirectory);
+				var outputPath = Path.Combine(this.config.ExportPath, "screenshots", objectTypeDirectory);
+				if (!Directory.Exists(outputPath)) {
+					Directory.CreateDirectory(outputPath);
+				}
+				var command = String.Format(@"
+					FOR %%f IN (*.jpeg) DO (
+						""{0}"" ^
+							%%f ^
+							-shave 500x0 ^
+							-colorspace RGB ^
+							-filter LanczosRadius ^
+							-distort Resize 1000 ^
+							-colorspace sRGB ^
+							..\overlay.png ^
+							-gravity southeast ^
+							-composite ^
+							""{2}\%%f""
+					)
+					""{1}"" ^
+					-overwrite_original ^
+					-iptc:source=""HeroesDB.net"" ^
+					{2}
+				", this.config.ImageMagickConvert, this.config.ExifTool, outputPath);
+				var commandFile = Path.Combine(this.config.RootPath, "screenshots", "command.bat");
+				File.WriteAllText(commandFile, command);
+				var process = new Process();
+				process.StartInfo.FileName = commandFile;
+				process.StartInfo.WorkingDirectory = inputPath;
+				process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+				process.StartInfo.Arguments = "/C";
+				process.Start();
+				process.WaitForExit();
+				File.Delete(commandFile);
 			}
 			Debug.Unindent();
 			Debug.WriteLine("}");
@@ -585,6 +611,38 @@ namespace HeroesDB {
 						{ "order", reader["matOrder"] },
 						{ "count", reader["matCount"] }
 					});
+				}
+				Debug.WriteLine("");
+				reader.Close();
+				command.CommandText = @"
+					SELECT
+						es.EquipKey AS equipKey,
+						es.CharacterID AS characterID,
+						es.Camera AS camera
+					FROM HDB_EquipScreenshots AS es
+					INNER JOIN HDB_Equips AS e ON e.Key = es.EquipKey
+					WHERE es.Ready = 1
+					ORDER BY
+						es.EquipKey,
+						CASE
+							WHEN e.MATK > e.PATK OR e.INT > e.STR THEN CASE WHEN es.CharacterID IN (4, 256) THEN 1 ELSE 2 END
+							ELSE CASE WHEN es.CharacterID IN (4, 256) THEN 2 ELSE 1 END
+						END,
+						es.CharacterID,
+						CASE SUBSTR(es.Camera, 1, 2) WHEN 'df' THEN 1 WHEN 'fr' THEN 2 WHEN 'lf' THEN 3 WHEN 'dr' THEN 4 WHEN 'dl' THEN 5 WHEN 'rb' THEN 6 WHEN 'bl' THEN 7 WHEN 'db' THEN 8 END;
+				";
+				reader = command.ExecuteReader();
+				var screenshots = new Dictionary<String, List<String>>();
+				while (reader.Read()) {
+					var equipKey = Convert.ToString(reader["equipKey"]);
+					var screenshotFilename = String.Concat(reader["equipKey"], "_", reader["characterID"], reader["camera"], ".jpeg");
+					if (File.Exists(Path.Combine(this.config.ExportPath, "screenshots", "equips", screenshotFilename))) {
+						if (!screenshots.ContainsKey(equipKey)) {
+							Debug.Write(".");
+							screenshots.Add(equipKey, new List<String>());
+						}
+						screenshots[equipKey].Add(screenshotFilename);
+					}
 				}
 				Debug.WriteLine("");
 				reader.Close();
@@ -708,6 +766,7 @@ namespace HeroesDB {
 					}
 					var key = Convert.ToString(row["key"]);
 					equip.Add("recipes", recipes.ContainsKey(key) ? recipes[key] : null);
+					equip.Add("screenshots", screenshots.ContainsKey(key) ? screenshots[key] : new List<String>());
 					var json = serializer.Serialize(equip);
 					path = Path.Combine(this.config.ExportPath, "objects", "equips");
 					path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(row["key"]), "json"));
@@ -846,6 +905,38 @@ namespace HeroesDB {
 				reader.Close();
 				command.CommandText = @"
 					SELECT
+						ss.SetKey AS setKey,
+						ss.CharacterID AS characterID,
+						ss.Camera AS camera
+					FROM HDB_SetScreenshots AS ss
+					INNER JOIN HDB_Sets AS s ON s.Key = ss.SetKey
+					WHERE ss.ready = 1
+					ORDER BY
+						ss.SetKey,
+						CASE
+							WHEN s.MATK > s.PATK OR s.INT > s.STR THEN CASE WHEN ss.CharacterID IN (4, 256) THEN 1 ELSE 2 END
+							ELSE CASE WHEN ss.CharacterID IN (4, 256) THEN 2 ELSE 1 END
+						END,
+						ss.CharacterID,
+						CASE SUBSTR(ss.Camera, 1, 2) WHEN 'df' THEN 1 WHEN 'fr' THEN 2 WHEN 'lf' THEN 3 WHEN 'dr' THEN 4 WHEN 'dl' THEN 5 WHEN 'rb' THEN 6 WHEN 'bl' THEN 7 WHEN 'db' THEN 8 END;
+				";
+				reader = command.ExecuteReader();
+				var screenshots = new Dictionary<String, List<String>>();
+				while (reader.Read()) {
+					var screenshotFilename = String.Concat(reader["setKey"], "_", reader["characterID"], reader["camera"], ".jpeg");
+					if (File.Exists(Path.Combine(this.config.ExportPath, "screenshots", "sets", screenshotFilename))) {
+						var setKey = Convert.ToString(reader["setKey"]);
+						if (!screenshots.ContainsKey(setKey)) {
+							Debug.Write(".");
+							screenshots.Add(setKey, new List<String>());
+						}
+						screenshots[setKey].Add(screenshotFilename);
+					}
+				}
+				Debug.WriteLine("");
+				reader.Close();
+				command.CommandText = @"
+					SELECT
 						s.Key AS key,
 						s.GroupKey AS groupKey,
 						s.TypeKey AS typeKey,
@@ -921,6 +1012,7 @@ namespace HeroesDB {
 					set.Add("parts", parts[key]);
 					set.Add("requiredSkills", requiredSkills.ContainsKey(key) ? requiredSkills[key] : new List<Dictionary<String, Object>>());
 					set.Add("effects", effects[key]);
+					set.Add("screenshots", screenshots.ContainsKey(key) ? screenshots[key] : new List<String>());
 					var json = serializer.Serialize(set);
 					path = Path.Combine(this.config.ExportPath, "objects", "sets");
 					path = Path.Combine(path, Path.ChangeExtension(key, "json"));
