@@ -629,7 +629,7 @@ namespace HeroesDB {
 							ELSE CASE WHEN es.CharacterID IN (4, 256) THEN 2 ELSE 1 END
 						END,
 						es.CharacterID,
-						CASE SUBSTR(es.Camera, 1, 2) WHEN 'df' THEN 1 WHEN 'fr' THEN 2 WHEN 'lf' THEN 3 WHEN 'dr' THEN 4 WHEN 'dl' THEN 5 WHEN 'rb' THEN 6 WHEN 'bl' THEN 7 WHEN 'db' THEN 8 END;
+						CASE SUBSTR(es.Camera, 2, 2) WHEN 'df' THEN 1 WHEN 'fr' THEN 2 WHEN 'lf' THEN 3 WHEN 'dr' THEN 4 WHEN 'dl' THEN 5 WHEN 'rb' THEN 6 WHEN 'bl' THEN 7 WHEN 'db' THEN 8 END;
 				";
 				reader = command.ExecuteReader();
 				var screenshots = new Dictionary<String, List<String>>();
@@ -918,7 +918,7 @@ namespace HeroesDB {
 							ELSE CASE WHEN ss.CharacterID IN (4, 256) THEN 2 ELSE 1 END
 						END,
 						ss.CharacterID,
-						CASE SUBSTR(ss.Camera, 1, 2) WHEN 'df' THEN 1 WHEN 'fr' THEN 2 WHEN 'lf' THEN 3 WHEN 'dr' THEN 4 WHEN 'dl' THEN 5 WHEN 'rb' THEN 6 WHEN 'bl' THEN 7 WHEN 'db' THEN 8 END;
+						CASE SUBSTR(ss.Camera, 2, 2) WHEN 'df' THEN 1 WHEN 'fr' THEN 2 WHEN 'lf' THEN 3 WHEN 'dr' THEN 4 WHEN 'dl' THEN 5 WHEN 'rb' THEN 6 WHEN 'bl' THEN 7 WHEN 'db' THEN 8 END;
 				";
 				reader = command.ExecuteReader();
 				var screenshots = new Dictionary<String, List<String>>();
