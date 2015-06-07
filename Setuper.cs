@@ -708,6 +708,225 @@ namespace HeroesDB {
 			Debug.WriteLine("}");
 		}
 
+		public void SetEnchants() {
+			Debug.WriteLine("SetEnchants() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
+				connection.Open();
+				var transaction = connection.BeginTransaction();
+				var command = connection.CreateCommand();
+				command.Transaction = transaction;
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_Enchants;
+					CREATE TABLE HDB_Enchants (
+						ID INT PRIMARY KEY,
+						Key NVARCHAR NOT NULL,
+						Name NVARCHAR NOT NULL,
+						Prefix INT NOT NULL,
+						Level INT NOT NULL,
+						Rank NVARCHAR NOT NULL,
+						RestrictionsText NVARCHAR NOT NULL,
+						MinSuccessChance INT NOT NULL,
+						MaxSuccessChance INT NOT NULL,
+						BreakChance INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(Key, Prefix)
+					);
+					INSERT INTO HDB_Enchants
+					SELECT
+						ei._ROWID_ AS ID,
+						ei.EnchantClass AS Key,
+						tn.Text AS Name,
+						CASE WHEN ei.IsPrefix = 'True' THEN 1 ELSE 0 END AS Prefix,
+						ei.EnchantLevel AS Level,
+						CASE WHEN ei.EnchantLevel > 6 THEN CAST(9 - (ei.[EnchantLevel] - 7) AS NVARCHAR) ELSE CHAR(71 - ei.[EnchantLevel]) END AS Rank,
+						tr.Text AS RestrictionsText,
+						ei.MinSuccessRatio AS MinSuccessChance,
+						ei.MaxSuccessRatio AS MaxSuccessChance,
+						ei.DestructionRatio AS BreakChance
+					FROM EnchantInfo AS ei
+					INNER JOIN HDB_Text AS tn ON tn.Key = 'GAMEUI_HEROES_ATTRIBUTE_' || CASE WHEN ei.IsPrefix = 'True' THEN 'PREFIX' ELSE 'SUFFIX' END || '_' || UPPER(ei.EnchantClass)
+					LEFT JOIN (
+						SELECT
+							t.EnchantClass,
+							CASE WHEN t.Text LIKE 'For %' THEN t.Text ELSE 'For ' || t.Text END AS Text
+						FROM (
+							SELECT
+								t.EnchantClass,
+								CASE WHEN t.Text LIKE '%.' THEN t.Text ELSE t.Text || '.' END AS Text
+							FROM (
+								SELECT
+									ei.EnchantClass,
+									CASE
+										WHEN t.Text IN ('For all Weapons', 'Can enchant to a Weapon') THEN 'For Weapons.'
+										WHEN t.Text = 'For all Armor and Shields.' THEN 'For Armor and Shields.'
+										WHEN t.Text = 'For Cloth Armor and Light Armor' THEN 'For Cloth and Light Armor'
+										WHEN t.Text = 'For Heavy Armor and Plate Armor' THEN 'For Heavy and Plate Armor'
+										ELSE REPLACE(REPLACE(REPLACE(t.Text, 'Can enchant to a', 'For'), 'Can enchant to', 'For'), 'Can be enchanted with', 'For')
+									END AS Text
+								FROM EnchantInfo AS ei
+								INNER JOIN HDB_Text AS t ON t.Key = 'GAMEUI_HEROES_ITEMCONSTRAINT_' || UPPER(ei.EnchantClass)
+							) AS t
+						) AS t
+					) AS tr ON tr.EnchantClass = ei.EnchantClass
+					WHERE
+						ei.EnchantClass != 'test' AND
+						ei.EnchantClass NOT LIKE 'pvp_%' AND
+						ei.ItemConstraint != 'INNERARMOR' AND
+						ei.Duration = 0 AND
+						ei.MinSuccessRatio != 100 AND
+						ei.EnchantClass NOT LIKE '%_100' AND
+						tn.Text GLOB '*[A-z]*';
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EnchantRestrictions;
+					CREATE TABLE HDB_EnchantRestrictions (
+						EnchantKey NVARCHAR NOT NULL,
+						GroupKey NVARCHAR NOT NULL,
+						TypeKey NVARCHAR,
+						CategoryKey NVARCHAR,
+						EquipKey NVARCHAR,
+						CONSTRAINT [unique] UNIQUE(EnchantKey, GroupKey, TypeKey, CategoryKey, EquipKey)
+					);
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					SELECT
+						e.Key AS EnchantKey,
+						ei.ItemConstraint AS Restrictions
+					FROM HDB_Enchants AS e
+					INNER JOIN EnchantInfo AS ei ON ei._ROWID_ = e.ID
+				";
+				var reader = command.ExecuteReader();
+				var insertCommand = connection.CreateCommand();
+				insertCommand.Transaction = transaction;
+				insertCommand.CommandText = "INSERT INTO HDB_EnchantRestrictions VALUES (@EnchantKey, @GroupKey, @TypeKey, @CategoryKey, @EquipKey);";
+				insertCommand.Parameters.Add("@EnchantKey", DbType.String);
+				insertCommand.Parameters.Add("@GroupKey", DbType.String);
+				insertCommand.Parameters.Add("@TypeKey", DbType.String);
+				insertCommand.Parameters.Add("@CategoryKey", DbType.String);
+				insertCommand.Parameters.Add("@EquipKey", DbType.String);
+				var equipCommand = connection.CreateCommand();
+				equipCommand.Transaction = transaction;
+				equipCommand.CommandText = @"
+					SELECT
+						e.Key,
+						e.GroupKey,
+						e.TypeKey,
+						e.CategoryKey
+					FROM HDB_Equips AS e
+					WHERE e.Key = @Key;
+				";
+				equipCommand.Parameters.Add("@Key", DbType.String);
+				var mapping = new Dictionary<String, String[]>() {
+					{ "CLOTH", new [] { "armor", "cloth", null } },
+					{ "LIGHT_ARMOR", new [] { "armor", "light", null } },
+					{ "HEAVY_ARMOR", new [] { "armor", "heavy", null } },
+					{ "PLATE_ARMOR", new [] { "armor", "plate", null } },
+					{ "HELM", new [] { "armor", null, "helm" } },
+					{ "TUNIC", new [] { "armor", null, "tunic" } },
+					{ "PANTS", new [] { "armor", null, "pants" } },
+					{ "GLOVES", new [] { "armor", null, "gloves" } },
+					{ "BOOTS", new [] { "armor", null, "boots" } },
+					{ "SHIELD", new [] { "offhand", "shield", "shield" } },
+					{ "LARGESHIELD", new [] { "offhand", "shield", "largeshield" } },
+					{ "SPELLBOOK", new [] { "offhand", "other", "spellbook" } },
+					{ "ACCESSORY", new [] { "accessory", "ordinary", null } },
+					{ "WEAPON", new [] { "weapon", null, null } },
+					{ "LONGSWORD", new [] { "weapon", "all", "longsword" } },
+					{ "HAMMER", new [] { "weapon", "all", "hammer" } },
+					{ "DUALSWORD", new [] { "weapon", "all", "dualsword" } },
+					{ "DUALSPEAR", new [] { "weapon", "all", "dualspear" } },
+					{ "STAFF", new [] { "weapon", "all", "staff" } },
+					{ "SCYTHE", new [] { "weapon", "all", "scythe" } }
+				};
+				while (reader.Read()) {
+					insertCommand.Parameters["@EnchantKey"].Value = reader["EnchantKey"];
+					foreach (var restriction in Convert.ToString(reader["Restrictions"]).Split(',')) {
+						if (mapping.ContainsKey(restriction)) {
+							insertCommand.Parameters["@GroupKey"].Value = mapping[restriction][0];
+							insertCommand.Parameters["@TypeKey"].Value = mapping[restriction][1];
+							insertCommand.Parameters["@CategoryKey"].Value = mapping[restriction][2];
+							insertCommand.Parameters["@EquipKey"].Value = null;
+							insertCommand.ExecuteNonQuery();
+						}
+						else {
+							equipCommand.Parameters["@Key"].Value = restriction.ToLower();
+							var equipReader = equipCommand.ExecuteReader();
+							if (!equipReader.Read()) {
+								Debug.WriteLine(String.Concat("Ignored restriction: ", restriction));
+							}
+							else {
+								insertCommand.Parameters["@GroupKey"].Value = equipReader["GroupKey"];
+								insertCommand.Parameters["@TypeKey"].Value = equipReader["TypeKey"];
+								insertCommand.Parameters["@CategoryKey"].Value = equipReader["CategoryKey"];
+								insertCommand.Parameters["@EquipKey"].Value = equipReader["Key"];
+								insertCommand.ExecuteNonQuery();
+							}
+							equipReader.Close();
+						}
+					}
+				}
+				reader.Close();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EnchantProperties;
+					CREATE TABLE HDB_EnchantProperties (
+						EnchantKey NVARCHAR NOT NULL,
+						Property NVARCHAR,
+						Value INT,
+						Condition NVARCHAR,
+						[Order] INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(EnchantKey, Property, Condition)
+					);
+					INSERT INTO HDB_EnchantProperties
+					SELECT
+						e.Key AS EnchantKey,
+						CASE
+							WHEN esi.Stat GLOB 'ATK[+-]*' THEN 'patk'
+							WHEN esi.Stat GLOB 'MATK[+-]*' THEN 'matk'
+							WHEN esi.Stat GLOB 'ATK_Speed[+-]*' THEN 'speed'
+							WHEN esi.Stat GLOB 'Critical[+-]*' THEN 'crit'
+							WHEN esi.Stat GLOB 'Balance[+-]*' THEN 'bal'
+							WHEN esi.Stat GLOB 'HP[+-]*' THEN 'hp'
+							WHEN esi.Stat GLOB 'DEF[+-]*' THEN 'def'
+							WHEN esi.Stat GLOB 'Res_Critical[+-]*' THEN 'critres'
+							WHEN esi.Stat GLOB 'STR[+-]*' THEN 'str'
+							WHEN esi.Stat GLOB 'INT[+-]*' THEN 'int'
+							WHEN esi.Stat GLOB 'DEX[+-]*' THEN 'dex'
+							WHEN esi.Stat GLOB 'WILL[+-]*' THEN 'will'
+							WHEN esi.Stat GLOB 'STAMINA[+-]*' THEN 'stamina'
+							ELSE ts.Text
+						END AS Property,
+						CASE
+							WHEN esi.Stat GLOB 'ATK[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('ATK+')) AS INT)
+							WHEN esi.Stat GLOB 'MATK[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('MATK+')) AS INT)
+							WHEN esi.Stat GLOB 'ATK_Speed[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('ATK_Speed+')) AS INT)
+							WHEN esi.Stat GLOB 'Critical[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('Critical+')) AS INT)
+							WHEN esi.Stat GLOB 'Balance[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('Balance+')) AS INT)
+							WHEN esi.Stat GLOB 'HP[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('HP+')) AS INT)
+							WHEN esi.Stat GLOB 'DEF[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('DEF+')) AS INT)
+							WHEN esi.Stat GLOB 'Res_Critical[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('Res_Critical+')) AS INT)
+							WHEN esi.Stat GLOB 'STR[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('STR+')) AS INT)
+							WHEN esi.Stat GLOB 'INT[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('INT+')) AS INT)
+							WHEN esi.Stat GLOB 'DEX[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('DEX+')) AS INT)
+							WHEN esi.Stat GLOB 'WILL[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('WILL+')) AS INT)
+							WHEN esi.Stat GLOB 'STAMINA[+-]*' THEN CAST(SUBSTR(esi.Stat, LENGTH('STAMINA+')) AS INT)
+							ELSE NULL
+						END AS Value,
+						CASE WHEN LENGTH(RTRIM(tc.Text)) = 0 THEN NULL ELSE tc.Text END AS Condition,
+						esi.[Order]
+					FROM EnchantStatInfo AS esi
+					INNER JOIN HDB_Enchants AS e ON e.Key = esi.EnchantClass
+					LEFT JOIN HDB_Text AS tc ON tc.Key = UPPER(esi.ConditionDesc)
+					LEFT JOIN HDB_Text AS ts ON ts.Key = UPPER(esi.StatDesc);
+				";
+				command.ExecuteNonQuery();
+				transaction.Commit();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
 		public void SetIcons() {
 			Debug.WriteLine("SetIcons() {");
 			Debug.Indent();

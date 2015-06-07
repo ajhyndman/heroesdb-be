@@ -352,13 +352,145 @@ namespace HeroesDB {
 			Debug.WriteLine("}");
 		}
 
+		public void ExportEnchants() {
+			Debug.WriteLine("ExportEnchants() {");
+			Debug.Indent();
+			var path = Path.Combine(this.config.ExportPath, "objects", "enchants");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						e.Key AS key,
+						e.Name AS name,
+						e.Prefix AS prefix,
+						e.Rank AS rank,
+						er.GroupKey AS groupKey,
+						er.TypeKey AS typeKey,
+						er.CategoryKey AS categoryKey,
+						er.EquipKey AS equipKey
+					FROM HDB_Enchants AS e
+					INNER JOIN HDB_EnchantRestrictions AS er ON er.EnchantKey = e.Key
+					ORDER BY
+						e.Level DESC,
+						e.Name,
+						e.Key;
+				";
+				var reader = command.ExecuteReader();
+				var enchants = new List<Dictionary<String, Object>>();
+				Dictionary<String, Object> enchant = null;
+				while (reader.Read()) {
+					if (enchant == null || Convert.ToString(enchant["key"]) != Convert.ToString(reader["key"])) {
+						if (enchant != null) {
+							Debug.Write(".");
+							enchants.Add(enchant);
+						}
+						enchant = new Dictionary<String, Object>() {
+							{ "key", reader["key"] },
+							{ "name", reader["name"] },
+							{ "prefix", Convert.ToBoolean(reader["prefix"]) },
+							{ "rank", reader["rank"] },
+							{ "restrictions", new List<Object>() }
+						};
+					}
+					var restriction = new String[4];
+					restriction[0] = Convert.ToString(reader["groupKey"]);
+					if (reader["typeKey"] != DBNull.Value) {
+						restriction[1] = Convert.ToString(reader["typeKey"]);
+					}
+					if (reader["categoryKey"] != DBNull.Value) {
+						restriction[2] = Convert.ToString(reader["categoryKey"]);
+					}
+					if (reader["equipKey"] != DBNull.Value) {
+						restriction[3] = Convert.ToString(reader["equipKey"]);
+					}
+					var restrictions = (List<Object>)enchant["restrictions"];
+					restrictions.Add(restriction);
+				}
+				if (enchant != null) {
+					Debug.Write(".");
+					enchants.Add(enchant);
+				}
+				reader.Close();
+				var serializer = new JavaScriptSerializer();
+				var json = serializer.Serialize(enchants);
+				path = Path.Combine(this.config.ExportPath, "objects", "enchants.json");
+				File.WriteAllText(path, json);
+				Debug.WriteLine("");
+				Action<Dictionary<String, Object>> serialize = (enchantObject) => {
+					json = serializer.Serialize(enchantObject);
+					path = Path.Combine(this.config.ExportPath, "objects", "enchants");
+					path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(enchantObject["key"]), "json"));
+					File.WriteAllText(path, json);
+				};
+				command.CommandText = @"
+					SELECT
+						e.Key AS key,
+						e.Name AS name,
+						e.Prefix AS prefix,
+						e.Rank AS rank,
+						e.RestrictionsText AS restrictionsText,
+						e.MinSuccessChance AS minSuccessChance,
+						e.MaxSuccessChance AS maxSuccessChance,
+						e.BreakChance AS breakChance,
+						ep.Property AS property,
+						ep.Value AS value,
+						ep.Condition AS condition
+					FROM HDB_Enchants AS e
+					INNER JOIN HDB_EnchantProperties AS ep ON ep.EnchantKey = e.Key
+					ORDER BY
+						e.Key,
+						CASE WHEN ep.Condition IS NULL THEN 1 ELSE 2 END,
+						ep.[Order];
+				";
+				reader = command.ExecuteReader();
+				enchant = null;
+				while (reader.Read()) {
+					if (enchant == null || Convert.ToString(reader["key"]) != Convert.ToString(enchant["key"])) {
+						Debug.Write(".");
+						if (enchant != null) {
+							serialize(enchant);
+						}
+						enchant = new Dictionary<String, Object>() {
+							{ "key", reader["key"] },
+							{ "name", reader["name"] },
+							{ "prefix", Convert.ToBoolean(reader["prefix"]) },
+							{ "rank", reader["rank"] },
+							{ "restrictionsText", reader["restrictionsText"] },
+							{ "minSuccessChance", reader["minSuccessChance"] },
+							{ "maxSuccessChance", reader["maxSuccessChance"] },
+							{ "breakChance", reader["breakChance"] },
+							{ "properties", new List<Dictionary<String, Object>>() }
+						};
+					}
+					var properties = (List<Dictionary<String, Object>>)enchant["properties"];
+					properties.Add(new Dictionary<String, Object>() {
+						{ "key", Convert.ToString(reader["property"]) },
+						{ "value", reader["value"] },
+						{ "condition", reader["condition"] }
+					});
+				}
+				if (enchant != null) {
+					serialize(enchant);
+				}
+				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
 		public void ExportIcons() {
 			Debug.WriteLine("ExportIcons() {");
 			Debug.Indent();
 			var path = Path.Combine(this.config.ExportPath, "icons");
 			Directory.CreateDirectory(path);
-			var icon = Paloma.TargaImage.LoadTargaImage(Path.Combine(this.config.IconImportPath, "blank.tga"));
-			icon.Save(Path.Combine(this.config.ExportPath, "icons", "0.png"));
+			foreach (var file in new List<String>() { "blank", "enchant_scroll" }) {
+				var icon = Paloma.TargaImage.LoadTargaImage(Path.Combine(this.config.IconImportPath, Path.ChangeExtension(file, "tga")));
+				icon.Save(Path.Combine(this.config.ExportPath, "icons", Path.ChangeExtension(file, "png")));
+			}
 			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
@@ -381,7 +513,7 @@ namespace HeroesDB {
 					var iconFile = Path.Combine(this.config.IconImportPath, iconFileName);
 					if (File.Exists(iconFile)) {
 						Debug.Write(".");
-						icon = Paloma.TargaImage.LoadTargaImage(iconFile);
+						var icon = Paloma.TargaImage.LoadTargaImage(iconFile);
 						icon.MakeTransparent(Color.FromArgb(0, 0, 0));
 						var needColors = false;
 						needColors |= reader["material1"] != DBNull.Value;

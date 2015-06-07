@@ -45,6 +45,7 @@ namespace HeroesDB {
 				stp.SetMats();
 				stp.SetQualityTypes();
 				stp.SetEnhanceTypes();
+				stp.SetEnchants();
 				stp.SetEquips();
 				stp.SetSets();
 				stp.SetScreenshots();
@@ -57,6 +58,7 @@ namespace HeroesDB {
 				exp.ExportMats();
 				exp.ExportQualityTypes();
 				exp.ExportEnhanceTypes();
+				exp.ExportEnchants();
 				exp.ExportScreenshots();
 				exp.ExportEquips();
 				exp.ExportSets();
