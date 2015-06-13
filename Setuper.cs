@@ -818,37 +818,39 @@ namespace HeroesDB {
 					WHERE e.Key = @Key;
 				";
 				equipCommand.Parameters.Add("@Key", DbType.String);
-				var mapping = new Dictionary<String, String[]>() {
-					{ "CLOTH", new [] { "armor", "cloth", null } },
-					{ "LIGHT_ARMOR", new [] { "armor", "light", null } },
-					{ "HEAVY_ARMOR", new [] { "armor", "heavy", null } },
-					{ "PLATE_ARMOR", new [] { "armor", "plate", null } },
-					{ "HELM", new [] { "armor", null, "helm" } },
-					{ "TUNIC", new [] { "armor", null, "tunic" } },
-					{ "PANTS", new [] { "armor", null, "pants" } },
-					{ "GLOVES", new [] { "armor", null, "gloves" } },
-					{ "BOOTS", new [] { "armor", null, "boots" } },
-					{ "SHIELD", new [] { "offhand", "shield", "shield" } },
-					{ "LARGESHIELD", new [] { "offhand", "shield", "largeshield" } },
-					{ "SPELLBOOK", new [] { "offhand", "other", "spellbook" } },
-					{ "ACCESSORY", new [] { "accessory", "ordinary", null } },
-					{ "WEAPON", new [] { "weapon", null, null } },
-					{ "LONGSWORD", new [] { "weapon", "all", "longsword" } },
-					{ "HAMMER", new [] { "weapon", "all", "hammer" } },
-					{ "DUALSWORD", new [] { "weapon", "all", "dualsword" } },
-					{ "DUALSPEAR", new [] { "weapon", "all", "dualspear" } },
-					{ "STAFF", new [] { "weapon", "all", "staff" } },
-					{ "SCYTHE", new [] { "weapon", "all", "scythe" } }
+				var mapping = new Dictionary<String, String[][]>() {
+					{ "CLOTH",       new String[][] { new [] { "armor", "cloth", null } } },
+					{ "LIGHT_ARMOR", new String[][] { new [] { "armor", "light", null } } },
+					{ "HEAVY_ARMOR", new String[][] { new [] { "armor", "heavy", null } } },
+					{ "PLATE_ARMOR", new String[][] { new [] { "armor", "plate", null } } },
+					{ "HELM",        new String[][] { new [] { "armor", null, "helm" } } },
+					{ "TUNIC",       new String[][] { new [] { "armor", null, "tunic" } } },
+					{ "PANTS",       new String[][] { new [] { "armor", null, "pants" } } },
+					{ "GLOVES",      new String[][] { new [] { "armor", null, "gloves" } } },
+					{ "BOOTS",       new String[][] { new [] { "armor", null, "boots" } } },
+					{ "SHIELD",      new String[][] { new [] { "offhand", "shield", "shield" } } },
+					{ "LARGESHIELD", new String[][] { new [] { "offhand", "shield", "largeshield" } } },
+					{ "SPELLBOOK",   new String[][] { new [] { "offhand", "other", "spellbook" } } },
+					{ "ACCESSORY",   new String[][] { new [] { "accessory", "ordinary", null }, new [] { "accessory", "special", "artifact" } } },
+					{ "WEAPON",      new String[][] { new [] { "weapon", null, null } } },
+					{ "LONGSWORD",   new String[][] { new [] { "weapon", "all", "longsword" } } },
+					{ "HAMMER",      new String[][] { new [] { "weapon", "all", "hammer" } } },
+					{ "DUALSWORD",   new String[][] { new [] { "weapon", "all", "dualsword" } } },
+					{ "DUALSPEAR",   new String[][] { new [] { "weapon", "all", "dualspear" } } },
+					{ "STAFF",       new String[][] { new [] { "weapon", "all", "staff" } } },
+					{ "SCYTHE",      new String[][] { new [] { "weapon", "all", "scythe" } } }
 				};
 				while (reader.Read()) {
 					insertCommand.Parameters["@EnchantKey"].Value = reader["EnchantKey"];
 					foreach (var restriction in Convert.ToString(reader["Restrictions"]).Split(',')) {
 						if (mapping.ContainsKey(restriction)) {
-							insertCommand.Parameters["@GroupKey"].Value = mapping[restriction][0];
-							insertCommand.Parameters["@TypeKey"].Value = mapping[restriction][1];
-							insertCommand.Parameters["@CategoryKey"].Value = mapping[restriction][2];
-							insertCommand.Parameters["@EquipKey"].Value = null;
-							insertCommand.ExecuteNonQuery();
+							foreach (var filter in mapping[restriction]) {
+								insertCommand.Parameters["@GroupKey"].Value = filter[0];
+								insertCommand.Parameters["@TypeKey"].Value = filter[1];
+								insertCommand.Parameters["@CategoryKey"].Value = filter[2];
+								insertCommand.Parameters["@EquipKey"].Value = null;
+								insertCommand.ExecuteNonQuery();
+							}
 						}
 						else {
 							equipCommand.Parameters["@Key"].Value = restriction.ToLower();
