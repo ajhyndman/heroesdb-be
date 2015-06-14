@@ -229,8 +229,11 @@ namespace HeroesDB {
 			}
 		}
 
-		private void setInjectNewFile(Int32 characterID, Dictionary<String, String> values) {
+		private void setInjectNewFile(Int32 characterID, String type, Dictionary<String, String> values) {
 			var sourceFilename = String.Concat(characterID, "_new.bin");
+			if (type == "shield") {
+				sourceFilename = String.Concat(characterID, "_", type, "_new.bin");
+			}
 			var sourceFile = Path.Combine(this.config.InjectSourcePath, sourceFilename);
 			var template = File.ReadAllText(sourceFile);
 			foreach (var key in values.Keys) {
@@ -374,6 +377,7 @@ namespace HeroesDB {
 						e.GroupKey AS EquipGroupKey,
 						e.CategoryKey AS EquipCategoryKey,
 						es.EquipCostumeKey,
+						es.EquipCostumeModel,
 						ei.Material1 AS EquipMaterial1,
 						ei.Material2 AS EquipMaterial2,
 						ei.Material3 AS EquipMaterial3,
@@ -401,6 +405,9 @@ namespace HeroesDB {
 					if (groupKey == "armor") {
 						valueKey = categoryKey;
 					}
+					else if (groupKey == "offhand") {
+						valueKey = "shield";
+					}
 					else if (groupKey == "weapon") {
 						valueKey = groupKey;
 						values[String.Concat(valueKey, "_type")] = String.Concat("weapon_", categoryKey);
@@ -409,7 +416,7 @@ namespace HeroesDB {
 						Debug.WriteLine("unsupported EquipGroupKey: {0}", groupKey);
 					}
 					if (valueKey != null) {
-						values[valueKey] = Convert.ToString(reader["EquipCostumeKey"]);
+						values[valueKey] = Convert.ToString(reader["EquipCostumeKey"] != DBNull.Value ? reader["EquipCostumeKey"] : reader["EquipCostumeModel"]);
 						var material1Key = Convert.ToString(reader["EquipMaterial1"]);
 						var material2Key = Convert.ToString(reader["EquipMaterial2"]);
 						var material3Key = Convert.ToString(reader["EquipMaterial3"]);
@@ -425,7 +432,7 @@ namespace HeroesDB {
 						if (reader["EquipMaterial3"] != DBNull.Value) {
 							values[String.Concat(valueKey, "_color3")] = Convert.ToString(this.config.Materials[material3Key][material3Index].ToArgb());
 						}
-						this.setInjectNewFile(characterID, values);
+						this.setInjectNewFile(characterID, valueKey, values);
 						var equipKey = Convert.ToString(reader["EquipKey"]);
 						var camera = Convert.ToString(reader["Camera"]);
 						this.clickLoad();
@@ -443,7 +450,7 @@ namespace HeroesDB {
 						this.clickScreenshot();
 						var i = 0;
 						while (!this.saveScreenshot("equips", equipKey, characterID, camera)) {
-							Debug.WriteLine("r");
+							Debug.Write("r");
 							if (i++ > 10) {
 								throw new Exception("Failing to take take/save screenshots.");
 							}
@@ -517,7 +524,7 @@ namespace HeroesDB {
 				var values = this.config.GetCostumeTemplateDefaultValues("set", characterID);
 				String currentCamera = null;
 				Action<String, String> screenshot = (setKey, camera) => {
-					this.setInjectNewFile(characterID, values);
+					this.setInjectNewFile(characterID, "set", values);
 					this.clickLoad();
 					if (camera != currentCamera) {
 						if (currentCamera != null) {

@@ -1280,6 +1280,7 @@ namespace HeroesDB {
 					CREATE TABLE HDB_EquipScreenshots (
 						EquipKey NVARCHAR NOT NULL,
 						EquipCostumeKey INT,
+						EquipCostumeModel NVARCHAR,
 						CharacterID INT NOT NULL,
 						Camera NVARCHAR NOT NULL,
 						Ready INT NOT NULL,
@@ -1289,6 +1290,7 @@ namespace HeroesDB {
 					SELECT
 						e.Key AS EquipKey,
 						NULL AS EquipCostumeKey,
+						NULL AS EquipCostumeModel,
 						c.ID AS CharacterID,
 						CASE
 							WHEN e.CategoryKey = 'dualsword' AND c.ID = 1 THEN '3blocf'
@@ -1306,13 +1308,20 @@ namespace HeroesDB {
 							WHEN e.CategoryKey = 'greatsword' THEN '2lfacf'
 							WHEN e.CategoryKey = 'battleglaive' THEN '1dfohf'
 							WHEN e.CategoryKey = 'longblade' THEN '2blocf'
+							WHEN e.CategoryKey = 'longblade' THEN '2blocf'
+							WHEN e.CategoryKey = 'shield' THEN '3dbocf'
+							WHEN e.CategoryKey = 'largeshield' THEN '3dbocf'
 							ELSE '1frocf'
 						END Camera,
 						0 AS Ready
 					FROM HDB_Equips AS e
 					INNER JOIN EquipItemInfo AS ei ON ei._ROWID_ = e.ID
 					INNER JOIN HDB_Characters AS c ON e.ClassRestriction | c.ID = e.ClassRestriction
-					WHERE e.GroupKey = 'weapon';
+					WHERE
+						e.GroupKey = 'weapon' OR (
+							e.GroupKey = 'offhand' AND
+							e.TypeKey = 'shield'
+						);
 				";
 				command.ExecuteNonQuery();
 				transaction.Commit();
@@ -1689,11 +1698,10 @@ namespace HeroesDB {
 		public void SetScreenshots() {
 			Debug.WriteLine("SetScreenshots() {");
 			Debug.Indent();
-			var lines = File.ReadAllLines(Path.Combine(this.config.HfsPath, "player_costume.txt.comp"));
 			var block = new Regex(@"^\s*""(?<key>\w+)""\s*$");
-			var property = new Regex(@"^\s*""(?<key>\w+)""\s*""(?<value>\w*)""\s*$");
-			Func<Int32, Tuple<Int32, Dictionary<String, Object>>> parseNode = null;
-			parseNode = (lineIndex) => {
+			var property = new Regex(@"^\s*""(?<key>\w+)""\s*""(?<value>[\/\.\w]*)""\s*$");
+			Func<String[], Int32, Tuple<Int32, Dictionary<String, Object>>> parseNode = null;
+			parseNode = (lines, lineIndex) => {
 				var node = new Dictionary<String, Object>();
 				for (var li = lineIndex; li < lines.Length; li += 1) {
 					var line = lines[li];
@@ -1705,7 +1713,7 @@ namespace HeroesDB {
 					if (match.Success) {
 						for (; li < lines.Length; li += 1) {
 							if (lines[li].Trim() == "{") {
-								var result = parseNode(li);
+								var result = parseNode(lines, li);
 								li = result.Item1;
 								node.Add(match.Groups["key"].Value, result.Item2);
 								break;
@@ -1724,7 +1732,8 @@ namespace HeroesDB {
 				}
 				return Tuple.Create(lines.Length, node);
 			};
-			var document = parseNode(0).Item2;
+			var linesTmp = File.ReadAllLines(Path.Combine(this.config.HfsPath, "player_costume.txt.comp"));
+			var document = parseNode(linesTmp, 0).Item2;
 			var costumes = new Dictionary<String, Dictionary<String, Dictionary<String, String>>>();
 			var costumeSectionCategories = new Dictionary<String, String> {
 				{ "upper_body", "tunic" },
@@ -1755,6 +1764,16 @@ namespace HeroesDB {
 					}
 				}
 			}
+			linesTmp = File.ReadAllLines(Path.Combine(this.config.HfsPath, "shields.txt.comp"));
+			document = parseNode(linesTmp, 0).Item2;
+			var shields = new Dictionary<String, String>();
+			var shieldSectionNode = (Dictionary<String, Object>)document["Fiona"];
+			foreach (var shield in shieldSectionNode.Keys) {
+				if (shieldSectionNode[shield] is Dictionary<String, Object>) {
+					var shieldNode = (Dictionary<String, Object>)shieldSectionNode[shield];
+					shields.Add(shield, Convert.ToString(shieldNode["normal"]));
+				}
+			}
 			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var transaction = connection.BeginTransaction();
@@ -1773,6 +1792,7 @@ namespace HeroesDB {
 					UPDATE HDB_EquipScreenshots
 					SET
 						EquipCostumeKey = @EquipCostumeKey,
+						EquipCostumeModel = @EquipCostumeModel,
 						Ready = @Ready
 					WHERE
 						HDB_EquipScreenshots.EquipKey = @EquipKey AND
@@ -1780,6 +1800,7 @@ namespace HeroesDB {
 						HDB_EquipScreenshots.Camera = @Camera;
 				";
 				updateCommand.Parameters.Add("@EquipCostumeKey", DbType.Int32);
+				updateCommand.Parameters.Add("@EquipCostumeModel", DbType.String);
 				updateCommand.Parameters.Add("@Ready", DbType.Int32);
 				updateCommand.Parameters.Add("@EquipKey", DbType.String);
 				updateCommand.Parameters.Add("@CharacterID", DbType.Int32);
@@ -1807,14 +1828,12 @@ namespace HeroesDB {
 				var usedScreenshotFiles = new List<String>();
 				while (reader.Read()) {
 					String costume = null;
+					String model = null;
 					var group = Convert.ToString(reader["EquipGroupKey"]);
 					var category = Convert.ToString(reader["EquipCategoryKey"]);
 					var costumeCategory = Convert.ToString(reader["EquipCostumeCategory"]);
 					var costumeLabel = Convert.ToString(reader["EquipCostumeLabel"]);
-					if (group != "armor") {
-						costume = costumeLabel;
-					}
-					else {
+					if (group == "armor") {
 						if (costumes[category].ContainsKey(costumeCategory) && costumes[category][costumeCategory].ContainsKey(costumeLabel)) {
 							costume = costumes[category][costumeCategory][costumeLabel];
 						}
@@ -1825,6 +1844,12 @@ namespace HeroesDB {
 							Debug.WriteLine("missing costume: {0}, {1}, {2}, {3}", category, costumeCategory, costumeLabel, costume);
 						}
 					}
+					else if (group == "offhand") {
+						model = shields[costumeLabel];
+					}
+					else {
+						costume = costumeLabel;
+					}
 					var ready = 0;
 					var screenshotFilename = String.Concat(reader["EquipKey"], "_", reader["CharacterID"], reader["Camera"], ".jpeg");
 					var screenshotFile = Path.Combine(screenshotPath, screenshotFilename);
@@ -1833,6 +1858,7 @@ namespace HeroesDB {
 						usedScreenshotFiles.Add(screenshotFile);
 					}
 					updateCommand.Parameters["@EquipCostumeKey"].Value = costume;
+					updateCommand.Parameters["@EquipCostumeModel"].Value = model;
 					updateCommand.Parameters["@Ready"].Value = ready;
 					updateCommand.Parameters["@EquipKey"].Value = reader["EquipKey"];
 					updateCommand.Parameters["@CharacterID"].Value = reader["CharacterID"];
