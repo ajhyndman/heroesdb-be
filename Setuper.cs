@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 using System;
-using System.Windows.Forms;
 
 namespace HeroesDB {
 
@@ -645,17 +644,17 @@ namespace HeroesDB {
 						Chance DOUBLE NOT NULL,
 						Risk NVARCHAR NOT NULL,
 						Mat1Key NVARCHAR NOT NULL,
-						Mat1IconID INT NOT NULL,
+						Mat1IconKey NVARCHAR NOT NULL,
 						Mat1Name NVARCHAR NOT NULL,
 						Mat1Rarity INT NOT NULL,
 						Mat1Count INT NOT NULL,
 						Mat2Key NVARCHAR NOT NULL,
-						Mat2IconID INT NOT NULL,
+						Mat2IconKey NVARCHAR NOT NULL,
 						Mat2Name NVARCHAR NOT NULL,
 						Mat2Rarity INT NOT NULL,
 						Mat2Count INT NOT NULL,
 						Mat3Key NVARCHAR NOT NULL,
-						Mat3IconID INT NOT NULL,
+						Mat3IconKey NVARCHAR NOT NULL,
 						Mat3Name NVARCHAR NOT NULL,
 						Mat3Rarity INT NOT NULL,
 						Mat3Count INT NOT NULL,
@@ -670,17 +669,17 @@ namespace HeroesDB {
 						en.SuccessRatio AS Chance,
 						CASE en.OnFail WHEN 'NoPenalty' THEN 'none' WHEN 'RankDown' THEN 'downgrade' WHEN 'RankReset' THEN 'reset' WHEN 'Destroy' THEN 'break' END AS Risk,
 						m1.Key AS Mat1Key,
-						m1.IconID AS Mat1IconID,
+						m1.IconKey AS Mat1IconKey,
 						m1.Name AS Mat1Name,
 						m1.Rarity AS Mat1Rarity,
 						en.Gold AS Mat1Count,
 						m2.Key AS Mat2Key,
-						m2.IconID AS Mat2IconID,
+						m2.IconKey AS Mat2IconKey,
 						m2.Name AS Mat2Name,
 						m2.Rarity AS Mat2Rarity,
 						en.MaterialNum1 AS Mat2Count,
 						m3.Key AS Mat3Key,
-						m3.IconID AS Mat3IconID,
+						m3.IconKey AS Mat3IconKey,
 						m3.Name AS Mat3Name,
 						m3.Rarity AS Mat3Rarity,
 						en.MaterialNum2 AS Mat3Count,
@@ -940,13 +939,23 @@ namespace HeroesDB {
 				command.CommandText = @"
 					DROP TABLE IF EXISTS HDB_Icons;
 					CREATE TABLE HDB_Icons (
+						Key NVARCHAR,
+						Icon NVARCHAR NOT NULL,
+						IconBG NVARCHAR,
+						Material1 NVARCHAR,
+						Material2 NVARCHAR,
+						Material3 NVARCHAR,
+						CONSTRAINT [unique] UNIQUE(Key)
+					);
+					DROP TABLE IF EXISTS HDB_tempt;
+					CREATE TABLE HDB_tempt (
 						Icon NVARCHAR NOT NULL,
 						IconBG NVARCHAR,
 						Material1 NVARCHAR,
 						Material2 NVARCHAR,
 						Material3 NVARCHAR
 					);
-					INSERT INTO HDB_Icons
+					INSERT INTO HDB_tempt
 					SELECT DISTINCT
 						i.Icon,
 						i.IconBG,
@@ -955,6 +964,20 @@ namespace HeroesDB {
 						e.Material3
 					FROM ItemClassInfo AS i
 					LEFT JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass;
+					INSERT INTO HDB_Icons
+					SELECT
+						t.Icon || CASE WHEN t.RN == 0 THEN '' ELSE '_' || t.RN END AS Key,
+						t.Icon,
+						t.IconBG,
+						t.Material1,
+						t.Material2,
+						t.Material3
+					FROM (
+						SELECT
+							(SELECT COUNT(*) FROM HDB_tempt AS tc WHERE tc.Icon = t.Icon AND tc._ROWID_ < t._ROWID_) AS RN,
+							t.*
+						FROM HDB_tempt AS t
+					) AS t;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -997,7 +1020,7 @@ namespace HeroesDB {
 					CREATE TABLE HDB_Mats (
 						ID INT PRIMARY KEY,
 						Key NVARCHAR NOT NULL,
-						IconID INT,
+						IconKey NVARCHAR,
 						Name NVARCHAR NOT NULL,
 						Classification NVARCHAR NOT NULL,
 						Description NVARCHAR,
@@ -1009,7 +1032,7 @@ namespace HeroesDB {
 					SELECT
 						c.ObjectID AS ID,
 						LOWER(i.ItemClass) AS Key,
-						ico.ID AS IconID,
+						ico.Key AS IconKey,
 						tn.Text AS Name,
 						c.Name AS Classification,
 						td.Text AS Description,
@@ -1023,9 +1046,9 @@ namespace HeroesDB {
 						LENGTH(td.Text) > 0
 					LEFT JOIN (
 						SELECT
+							MIN(ico.Key) AS Key,
 							ico.Icon,
-							ico.IconBG,
-							MIN(ico._ROWID_) AS ID
+							ico.IconBG
 						FROM HDB_Icons AS ico
 						GROUP BY
 							ico.Icon,
@@ -1059,7 +1082,7 @@ namespace HeroesDB {
 						GroupKey NVARCHAR NOT NULL,
 						TypeKey NVARCHAR NOT NULL,
 						CategoryKey NVARCHAR NOT NULL,
-						IconID INT,
+						IconKey NVARCHAR,
 						Name NVARCHAR NOT NULL,
 						Classification NVARCHAR NOT NULL,
 						Description NVARCHAR,
@@ -1097,7 +1120,7 @@ namespace HeroesDB {
 						c.GroupKey,
 						c.TypeKey,
 						c.CategoryKey,
-						ico._ROWID_ AS IconID,
+						ico.Key AS IconKey,
 						tn.Text AS Name,
 						c.Name AS classification,
 						td.Text AS Description,
@@ -1345,7 +1368,7 @@ namespace HeroesDB {
 						Key NVARCHAR NOT NULL,
 						GroupKey NVARCHAR,
 						TypeKey NVARCHAR,
-						IconID INT,
+						IconKey NVARCHAR,
 						Name NVARCHAR NOT NULL,
 						Rarity INT NOT NULL,
 						RequiredLevel INT NOT NULL,
@@ -1373,7 +1396,7 @@ namespace HeroesDB {
 						LOWER(s.SetID) AS Key,
 						c.GroupKey,
 						c.TypeKey,
-						ss.IconID,
+						ss.IconKey,
 						tn.Text AS Name,
 						ss.Rarity,
 						ss.RequiredLevel,
@@ -1408,7 +1431,7 @@ namespace HeroesDB {
 					INNER JOIN (
 						SELECT
 							s.SetID,
-							MAX(CASE WHEN i.Category = 'HELM' THEN ico._ROWID_ ELSE NULL END) AS IconID,
+							MAX(CASE WHEN i.Category = 'HELM' THEN ico.Key ELSE NULL END) AS IconKey,
 							MAX(i.Rarity) AS Rarity,
 							MAX(i.RequiredLevel) AS RequiredLevel,
 							MAX(i.ClassRestriction) AS ClassRestriction,

@@ -270,17 +270,17 @@ namespace HeroesDB {
 						e.Chance AS chance,
 						e.Risk AS risk,
 						e.Mat1Key AS mat1Key,
-						e.Mat1IconID AS mat1IconID,
+						e.Mat1IconKey AS mat1IconKey,
 						e.Mat1Name AS mat1Name,
 						e.Mat1Rarity AS mat1Rarity,
 						e.Mat1Count AS mat1Count,
 						e.Mat2Key AS mat2Key,
-						e.Mat2IconID AS mat2IconID,
+						e.Mat2IconKey AS mat2IconKey,
 						e.Mat2Name AS mat2Name,
 						e.Mat2Rarity AS mat2Rarity,
 						e.Mat2Count AS mat2Count,
 						e.Mat3Key AS mat3Key,
-						e.Mat3IconID AS mat3IconID,
+						e.Mat3IconKey AS mat3IconKey,
 						e.Mat3Name AS mat3Name,
 						e.Mat3Rarity AS mat3Rarity,
 						e.Mat3Count AS mat3Count,
@@ -306,19 +306,19 @@ namespace HeroesDB {
 						previousKey = key;
 						var mats = new Dictionary<String, Object> {};
 						mats.Add(Convert.ToString(reader["mat1Key"]), new Dictionary<String, Object>() {
-							{ "iconID", reader["mat1IconID"] },
+							{ "iconKey", reader["mat1IconKey"] },
 							{ "name", reader["mat1Name"] },
 							{ "rarity", reader["mat1Rarity"] },
 							{ "order", 3 }
 						});
 						mats.Add(Convert.ToString(reader["mat2Key"]), new Dictionary<String, Object>() {
-							{ "iconID", reader["mat2IconID"] },
+							{ "iconKey", reader["mat2IconKey"] },
 							{ "name", reader["mat2Name"] },
 							{ "rarity", reader["mat2Rarity"] },
 							{ "order", 2 }
 						});
 						mats.Add(Convert.ToString(reader["mat3Key"]), new Dictionary<String, Object>() {
-							{ "iconID", reader["mat3IconID"] },
+							{ "iconKey", reader["mat3IconKey"] },
 							{ "name", reader["mat3Name"] },
 							{ "rarity", reader["mat3Rarity"] },
 							{ "order", 1 }
@@ -496,15 +496,15 @@ namespace HeroesDB {
 				var command = connection.CreateCommand();
 				command.CommandText = @"
 					SELECT
-						i._ROWID_ AS id,
+						i.Key AS key,
 						i.Icon AS icon,
 						i.Material1 AS material1,
 						i.Material2 AS material2,
 						i.Material3 AS material3
 					FROM HDB_Icons AS i
-					LEFT JOIN HDB_Equips AS e ON e.IconID = i._ROWID_
-					LEFT JOIN HDB_Sets AS s ON s.IconID = i._ROWID_
-					LEFT JOIN HDB_Mats AS m ON m.IconID = i._ROWID_
+					LEFT JOIN HDB_Equips AS e ON e.IconKey = i.Key
+					LEFT JOIN HDB_Sets AS s ON s.IconKey = i.Key
+					LEFT JOIN HDB_Mats AS m ON m.IconKey = i.Key
 					WHERE COALESCE(e.ID, s.ID, m.ID) IS NOT NULL;
 				";
 				var reader = command.ExecuteReader();
@@ -550,7 +550,7 @@ namespace HeroesDB {
 								}
 							}
 						}
-						icon.Save(Path.Combine(this.config.ExportPath, "icons", String.Concat(reader["id"], ".png")));
+						icon.Save(Path.Combine(this.config.ExportPath, "icons", String.Concat(reader["key"], ".png")));
 					}
 				}
 				Debug.WriteLine("");
@@ -573,7 +573,7 @@ namespace HeroesDB {
 				command.CommandText = @"
 					SELECT
 						m.Key AS key,
-						m.IconID AS iconID,
+						m.IconKey AS iconKey,
 						m.Name AS name,
 						m.Classification AS classification,
 						m.Description AS description,
@@ -664,7 +664,7 @@ namespace HeroesDB {
 					SELECT
 						ers.EquipKey AS equipKey,
 						ers.ShopKey AS shopKey,
-						ers.ShopName AS ShopName
+						ers.ShopName AS shopName
 					FROM HDB_EquipRecipeShops AS ers
 					ORDER BY
 						ers.EquipKey,
@@ -679,7 +679,7 @@ namespace HeroesDB {
 					}
 					shops[equipKey].Add(new Dictionary<String, Object>() {
 						{ "key", reader["shopKey"] },
-						{ "name", reader["ShopName"] }
+						{ "name", reader["shopName"] }
 					});
 				}
 				Debug.WriteLine("");
@@ -690,7 +690,7 @@ namespace HeroesDB {
 						er.EquipKey AS equipKey,
 						er.Type AS type,
 						m.Key AS matKey,
-						m.IconID AS matIconID,
+						m.IconKey AS matIconKey,
 						m.Name AS matName,
 						m.Rarity AS matRarity,
 						m.[Order] AS matOrder,
@@ -737,7 +737,7 @@ namespace HeroesDB {
 					}
 					((List<Dictionary<String, Object>>)recipes[equipKey][type]["mats"]).Add(new Dictionary<String, Object>() {
 						{ "key", reader["matKey"] },
-						{ "iconID", reader["matIconID"] },
+						{ "iconKey", reader["matIconKey"] },
 						{ "name", reader["matName"] },
 						{ "rarity", reader["matRarity"] },
 						{ "order", reader["matOrder"] },
@@ -784,7 +784,7 @@ namespace HeroesDB {
 						e.GroupKey AS groupKey,
 						e.TypeKey AS typeKey,
 						e.CategoryKey AS categoryKey,
-						e.IconID AS iconID,
+						e.IconKey AS iconKey,
 						e.Name AS name,
 						e.Classification AS classification,
 						e.Description AS description,
@@ -830,7 +830,7 @@ namespace HeroesDB {
 						{ "key", row["key"] },
 						{ "type", "equip" },
 						{ "categoryKeys", new List<String>() { Convert.ToString(row["categoryKey"]) } },
-						{ "iconID", row["iconID"] },
+						{ "iconKey", row["iconKey"] },
 						{ "name", row["name"] },
 						{ "rarity", row["rarity"] }
 					};
@@ -1072,7 +1072,7 @@ namespace HeroesDB {
 						s.Key AS key,
 						s.GroupKey AS groupKey,
 						s.TypeKey AS typeKey,
-						s.IconID AS iconID,
+						s.IconKey AS iconKey,
 						s.Name AS name,
 						s.Rarity AS rarity,
 						s.RequiredLevel AS requiredLevel,
@@ -1112,7 +1112,7 @@ namespace HeroesDB {
 						{ "key", row["key"] },
 						{ "type", "set" },
 						{ "categoryKeys", categoryKeys[Convert.ToString(row["key"])] },
-						{ "iconID", row["iconID"] },
+						{ "iconKey", row["iconKey"] },
 						{ "name", row["name"] },
 						{ "rarity", row["rarity"] }
 					};

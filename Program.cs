@@ -1,4 +1,5 @@
 ﻿
+using System.Data.SQLite;
 using System.Diagnostics;
 using System;
 
@@ -27,6 +28,62 @@ namespace HeroesDB {
 			}
 		}
 
+		public static void MissingMaterials(Config cfg) {
+			using (var connection = new SQLiteConnection(cfg.ConnectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT t.*
+					FROM (
+						SELECT
+							'i' AS source,
+							i.Icon AS key,
+							i.Material1 AS material1,
+							i.Material2 AS material2,
+							i.Material3 AS material3
+						FROM HDB_Icons AS i
+						LEFT JOIN HDB_Equips AS e ON e.IconKey = i.Key
+						LEFT JOIN HDB_Sets AS s ON s.IconKey = i.Key
+						LEFT JOIN HDB_Mats AS m ON m.IconKey = i.Key
+						WHERE COALESCE(e.ID, s.ID, m.ID) IS NOT NULL
+						UNION ALL
+						SELECT
+							'e' AS source,
+							es.EquipKey AS key,
+							ei.Material1 AS material1,
+							ei.Material2 AS material2,
+							ei.Material3 AS material3
+						FROM HDB_EquipScreenshots AS es
+						INNER JOIN HDB_Equips AS e ON e.Key = es.EquipKey
+						INNER JOIN EquipItemInfo AS ei ON ei._ROWID_ = e.ID
+					) AS t
+					WHERE COALESCE(t.material1, t.material2, t.material3) IS NOT NULL
+					ORDER BY
+						t.material1,
+						t.material2,
+						t.material3;
+				";
+				var reader = command.ExecuteReader();
+				while (reader.Read()) {
+					var material1Key = Convert.ToString(reader["material1"]);
+					var material2Key = Convert.ToString(reader["material2"]);
+					var material3Key = Convert.ToString(reader["material3"]);
+					var material1Index = 0;
+					var material2Index = material2Key == material1Key ? 1 : 0;
+					var material3Index = material3Key == material1Key && material3Key == material2Key ? 2 : (material3Key == material1Key || material3Key == material2Key ? 1 : 0);
+					if (reader["material1"] != DBNull.Value && (!cfg.Materials.ContainsKey(material1Key) || cfg.Materials[material1Key].Length < material1Index + 1)) {
+						Console.WriteLine(String.Format("{0}[{1}] for {2}:{3}", material1Key, material1Index, reader["source"], reader["key"]));
+					}
+					if (reader["material2"] != DBNull.Value && (!cfg.Materials.ContainsKey(material2Key) || cfg.Materials[material2Key].Length < material2Index + 1)) {
+						Console.WriteLine(String.Format("{0}[{1}] for {2}:{3}", material2Key, material2Index, reader["source"], reader["key"]));
+					}
+					if (reader["material3"] != DBNull.Value && (!cfg.Materials.ContainsKey(material3Key) || cfg.Materials[material3Key].Length < material3Index + 1)) {
+						Console.WriteLine(String.Format("{0}[{1}] for {2}:{3}", material3Key, material3Index, reader["source"], reader["key"]));
+					}
+				}
+			}
+		}
+
 		public static void Main(String[] args) {
 			Debug.Listeners.Add(new TextWriterTraceListener(Console.Out));
 			Debug.WriteLine("Main() {");
@@ -45,9 +102,9 @@ namespace HeroesDB {
 				stp.SetMats();
 				stp.SetQualityTypes();
 				stp.SetEnhanceTypes();
-				stp.SetEnchants();
 				stp.SetEquips();
 				stp.SetSets();
+				stp.SetEnchants();
 				stp.SetScreenshots();
 				var ssr = new Screenshoter(cfg);
 				ssr.Screenshot();
@@ -63,6 +120,7 @@ namespace HeroesDB {
 				exp.ExportEquips();
 				exp.ExportSets();
 				exp.ExportSitemap();
+//					MissingMaterials(cfg);
 //				Color(cfg);
 			}
 			catch (Exception exception) {
