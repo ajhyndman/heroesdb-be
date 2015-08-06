@@ -9,11 +9,11 @@ namespace HeroesDB {
 
 	public class Config {
 
-		public readonly String RootPath = @"D:\HeroesDB";
+		public readonly String RootPath = @"D:\Home\Code\HeroesDB";
 
 		public readonly String AppPath;
 
-		public readonly String ExifTool = @"D:\HeroesDB\tools\exiftool.exe";
+		public readonly String ExifTool = @"D:\Home\Code\HeroesDB\tools\exiftool.exe";
 
 		public readonly String ImageMagickConvert = @"C:\Program Files\ImageMagick-6.9.0-Q16\convert";
 
