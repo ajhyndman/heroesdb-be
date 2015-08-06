@@ -114,7 +114,7 @@
 		"color"		"{{weapon_color1}} {{weapon_color2}} {{weapon_color3}}"
 		"pollution"		"0"
 	}
-	"shield"
+	"second_weapon"
 	{
 		"name"		"{{shield}}"
 		"color"		"{{shield_color1}} {{shield_color2}} {{shield_color3}}"

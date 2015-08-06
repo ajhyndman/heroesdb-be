@@ -114,7 +114,7 @@
 		"color"		"19145764 26446460 20914722"
 		"pollution"		"0"
 	}
-	"castlet"
+	"second_weapon"
 	{
 		"name"		"models/weapon/castlet/castlet_effect_volt.mdl"
 		"color"		"964722816 964722816 964722816"

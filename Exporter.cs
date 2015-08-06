@@ -367,6 +367,7 @@ namespace HeroesDB {
 						e.Key AS key,
 						e.Name AS name,
 						e.Prefix AS prefix,
+						e.Level AS level,
 						e.Rank AS rank,
 						er.GroupKey AS groupKey,
 						er.TypeKey AS typeKey,
@@ -392,6 +393,7 @@ namespace HeroesDB {
 							{ "key", reader["key"] },
 							{ "name", reader["name"] },
 							{ "prefix", Convert.ToBoolean(reader["prefix"]) },
+							{ "level", reader["level"] },
 							{ "rank", reader["rank"] },
 							{ "restrictions", new List<Object>() }
 						};
@@ -502,10 +504,22 @@ namespace HeroesDB {
 						i.Material2 AS material2,
 						i.Material3 AS material3
 					FROM HDB_Icons AS i
-					LEFT JOIN HDB_Equips AS e ON e.IconKey = i.Key
-					LEFT JOIN HDB_Sets AS s ON s.IconKey = i.Key
-					LEFT JOIN HDB_Mats AS m ON m.IconKey = i.Key
-					WHERE COALESCE(e.ID, s.ID, m.ID) IS NOT NULL;
+					INNER JOIN (
+						SELECT e.IconKey
+						FROM HDB_Equips AS e
+						UNION
+						SELECT epg.IconKey
+						FROM HDB_EquipPartGroups AS epg
+						UNION
+						SELECT ep.IconKey
+						FROM HDB_EquipParts AS ep
+						UNION
+						SELECT s.IconKey
+						FROM HDB_Sets AS s
+						UNION
+						SELECT m.IconKey
+						FROM HDB_Mats AS m
+					) AS o ON o.IconKey = i.Key;
 				";
 				var reader = command.ExecuteReader();
 				while (reader.Read()) {
@@ -659,6 +673,37 @@ namespace HeroesDB {
 			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
 				connection.Open();
 				var command = connection.CreateCommand();
+				var equipParts = new Dictionary<String, Object>();
+				command.CommandText = @"
+					SELECT
+						epg.EquipKey AS equipKey,
+						ep.Rarity AS rarity,
+						ep.Key AS key
+					FROM HDB_EquipPartGroups AS epg
+					INNER JOIN HDB_EquipParts AS ep ON ep.EquipPartGroupKey = epg.Key
+					ORDER BY
+						epg.EquipKey,
+						ep.Rarity,
+						epg.[Order];
+				";
+				var reader = command.ExecuteReader();
+				while (reader.Read()) {
+					var equipKey = Convert.ToString(reader["equipKey"]);
+					if (!equipParts.ContainsKey(equipKey)) {
+						equipParts.Add(equipKey, new Dictionary<String, Object>());
+					}
+					var rarities = (Dictionary<String, Object>)equipParts[equipKey];
+					var rarity = Convert.ToString(reader["rarity"]);
+					if (!rarities.ContainsKey(rarity)) {
+						rarities.Add(rarity, new List<Object>());
+					}
+					var keys = (List<Object>)rarities[rarity];
+					var key = Convert.ToString(reader["key"]);
+					keys.Add(key);
+					Debug.Write(".");
+				}
+				reader.Close();
+				Debug.WriteLine("");
 				var shops = new Dictionary<String, List<Dictionary<String, Object>>>();
 				command.CommandText = @"
 					SELECT
@@ -670,7 +715,7 @@ namespace HeroesDB {
 						ers.EquipKey,
 						ers.ShopName;
 				";
-				var reader = command.ExecuteReader();
+				reader = command.ExecuteReader();
 				while (reader.Read()) {
 					var equipKey = Convert.ToString(reader["equipKey"]);
 					if (!shops.ContainsKey(equipKey)) {
@@ -680,6 +725,30 @@ namespace HeroesDB {
 					shops[equipKey].Add(new Dictionary<String, Object>() {
 						{ "key", reader["shopKey"] },
 						{ "name", reader["shopName"] }
+					});
+				}
+				Debug.WriteLine("");
+				reader.Close();
+				var recipeExpertises = new Dictionary<String, List<Dictionary<String, Object>>>();
+				command.CommandText = @"
+					SELECT
+						ere.EquipKey AS equipKey,
+						ere.Name AS name,
+						ere.ExperienceRequired AS experienceRequired
+					FROM HDB_EquipRecipeExpertises AS ere
+					ORDER BY
+						ere.EquipKey,
+						ere.Name;
+				";
+				reader = command.ExecuteReader();
+				while (reader.Read()) {
+					var equipKey = Convert.ToString(reader["equipKey"]);
+					if (!recipeExpertises.ContainsKey(equipKey)) {
+						recipeExpertises.Add(equipKey, new List<Dictionary<String, Object>>());
+					}
+					recipeExpertises[equipKey].Add(new Dictionary<String, Object>() {
+						{ "name", reader["name"] },
+						{ "experienceRequired", reader["experienceRequired"] }
 					});
 				}
 				Debug.WriteLine("");
@@ -695,9 +764,7 @@ namespace HeroesDB {
 						m.Rarity AS matRarity,
 						m.[Order] AS matOrder,
 						er.MatCount AS matCount,
-						er.AppearQuestName AS appearQuestName,
-						er.ExpertiseName AS expertiseName,
-						er.ExpertiseExperienceRequired AS expertiseExperienceRequired
+						er.AppearQuestName AS appearQuestName
 					FROM HDB_EquipRecipes AS er
 					INNER JOIN HDB_Mats AS m ON m.Key = er.MatKey
 					ORDER BY
@@ -722,14 +789,7 @@ namespace HeroesDB {
 							recipes[equipKey][type].Add("shops", shops[equipKey]);
 						}
 						else if (type == "pc") {
-							var expertises = new List<Object>();
-							if (reader["expertiseName"] != DBNull.Value) {
-								expertises.Add(new Dictionary<String, Object>() {
-									{"name", reader["expertiseName"] },
-									{"experienceRequired", reader["expertiseExperienceRequired"] }
-								});
-							}
-							recipes[equipKey][type].Add("expertises", expertises);
+							recipes[equipKey][type].Add("expertises", recipeExpertises[equipKey]);
 						}
 					}
 					if (!recipes[equipKey][type].ContainsKey("mats")) {
@@ -897,6 +957,7 @@ namespace HeroesDB {
 						}
 					}
 					var key = Convert.ToString(row["key"]);
+					equip.Add("equipParts", equipParts.ContainsKey(key) ? equipParts[key] : null);
 					equip.Add("recipes", recipes.ContainsKey(key) ? recipes[key] : null);
 					equip.Add("screenshots", screenshots.ContainsKey(key) ? screenshots[key] : new List<String>());
 					var json = serializer.Serialize(equip);
@@ -909,6 +970,117 @@ namespace HeroesDB {
 			Debug.Unindent();
 			Debug.WriteLine("}");
 		}
+
+		public void ExportEquipParts() {
+			Debug.WriteLine("ExportEquipParts() {");
+			Debug.Indent();
+			var path = Path.Combine(this.config.ExportPath, "objects", "equip-parts");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						ep.Key AS key,
+						ep.EquipPartGroupKey AS partGroupKey,
+						ep.IconKey AS iconKey,
+						ep.Name AS name,
+						ep.Rarity AS rarity,
+						ep.QualityTypeKey AS qualityTypeKey,
+						ep.EnhanceTypeKey AS enhanceTypeKey,
+						ep.ATK AS atk,
+						ep.PATK AS patk,
+						ep.MATK AS matk,
+						ep.SPEED AS speed,
+						ep.CRIT AS crit,
+						ep.BAL AS bal,
+						ep.HP AS hp,
+						ep.DEF AS def,
+						ep.CRITRES AS critres,
+						ep.STR AS str,
+						ep.INT AS int,
+						ep.DEX AS dex,
+						ep.WILL AS will,
+						ep.MaxEnchantLevel AS maxEnchantLevel
+					FROM HDB_EquipParts AS ep
+					ORDER BY
+						ep.EquipPartGroupKey,
+						ep.Key;
+				";
+				var reader = command.ExecuteReader();
+				var serializer = new JavaScriptSerializer();
+				while (reader.Read()) {
+					Debug.Write(".");
+					var part = new Dictionary<String, Object>();
+					for (var i = 0; i < reader.FieldCount; i += 1) {
+						part.Add(reader.GetName(i), reader[i]);
+					}
+					var json = serializer.Serialize(part);
+					path = Path.Combine(this.config.ExportPath, "objects", "equip-parts");
+					path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(reader["key"]), "json"));
+					File.WriteAllText(path, json);
+				}
+				reader.Close();
+				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		/*
+		public void ExportBaseEquips() {
+			Debug.WriteLine("ExportBaseEquips() {");
+			Debug.Indent();
+			var path = Path.Combine(this.config.ExportPath, "objects", "base-equips");
+			if (!Directory.Exists(path)) {
+				Directory.CreateDirectory(path);
+			}
+			var serializer = new JavaScriptSerializer();
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					SELECT
+						be.Key AS key,
+						bee.EquipKey AS equipKey,
+						bee.EquipClassRestriction AS equipClassRestriction
+					FROM HDB_BaseEquips AS be
+					INNER JOIN HDB_BaseEquipEquips AS bee ON bee.BaseEquipKey = be.Key
+					ORDER BY be.Key;
+				";
+				var reader = command.ExecuteReader();
+				var table = new DataTable();
+				table.Load(reader);
+				reader.Close();
+				var baseEquip = new Dictionary<String, Object>();
+				for (var i = 0; i < table.Rows.Count; i += 1) {
+					var row = table.Rows[i];
+					if (!baseEquip.ContainsKey("key")) {
+						baseEquip.Add("key", row["key"]);
+						baseEquip.Add("equips", new List<Object>());
+					}
+					var equips = (List<Object>)baseEquip["equips"];
+					equips.Add(new Dictionary<String, Object>() {
+						{ "key", row["equipKey"] },
+						{ "classRestriction", row["equipClassRestriction"] },
+					});
+					if (i + 1 >= table.Rows.Count || Convert.ToString(row["key"]) != Convert.ToString(table.Rows[i + 1]["key"])) {
+						Debug.Write(".");
+						var json = serializer.Serialize(baseEquip);
+						path = Path.Combine(this.config.ExportPath, "objects", "base-equips");
+						path = Path.Combine(path, Path.ChangeExtension(Convert.ToString(baseEquip["key"]), "json"));
+						File.WriteAllText(path, json);
+						baseEquip.Clear();
+					}
+				}
+				Debug.WriteLine("");
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+		*/
 
 		public void ExportSets() {
 			Debug.WriteLine("ExportSets() {");
@@ -949,29 +1121,55 @@ namespace HeroesDB {
 						sp.SetKey AS setKey,
 						sp.EquipKey AS equipKey,
 						sp.EquipName AS equipName,
-						sp.Base AS base
+						sp.Base AS base,
+						bee.EquipKey AS subEquipKey,
+						bee.EquipName AS subEquipName,
+						bee.EquipClassRestriction AS subEquipClassRestriction
 					FROM HDB_SetParts AS sp
+					LEFT JOIN HDB_BaseEquipEquips AS bee ON bee.BaseEquipKey = sp.EquipKey
 					ORDER BY
 						sp.SetKey,
 						sp.[Order],
-						sp.EquipName;
+						sp.EquipKey;
 				";
-				reader = command.ExecuteReader();
-				var parts = new Dictionary<String, List<Dictionary<String, Object>>>();
-				while (reader.Read()) {
-					var setKey = Convert.ToString(reader["setKey"]);
+				var data = new DataSet();
+				var adapter = new SQLiteDataAdapter(command);
+				adapter.Fill(data);
+				var table = data.Tables[0];
+				var parts = new Dictionary<String, List<Object>>();
+				for (var i = 0; i < table.Rows.Count; i += 1) {
+					var row = table.Rows[i];
+					var setKey = Convert.ToString(row["setKey"]);
+					var equip = new Dictionary<String, Object>() {
+						{ "key", row["equipKey"] },
+						{ "name", row["equipName"] },
+						{ "base", Convert.ToInt32(row["base"]) == 1 }
+					};
+					if (Convert.ToInt32(row["base"]) == 1) {
+						var subEquips = new List<Object>();
+						while (true) {
+							row = table.Rows[i];
+							subEquips.Add(new Dictionary<String, Object>() {
+								{ "key", row["subEquipKey"] },
+								{ "name", row["subEquipName"] },
+								{ "classRestriction", row["subEquipClassRestriction"] }
+							});
+							if (i + 1 < table.Rows.Count && (setKey != Convert.ToString(table.Rows[i + 1]["setKey"]) || Convert.ToString(row["equipKey"]) != Convert.ToString(table.Rows[i + 1]["equipKey"]))) {
+								break;
+							}
+							i += 1;
+							if (i >= table.Rows.Count) {
+								break;
+							}
+						}
+						equip.Add("equips", subEquips);
+					}
 					if (!parts.ContainsKey(setKey)) {
 						Debug.Write(".");
-						parts.Add(setKey, new List<Dictionary<String, Object>>());
+						parts.Add(setKey, new List<Object>());
 					}
-					var equip = new Dictionary<String, Object>() {
-						{ "key", reader["equipKey"] },
-						{ "name", reader["equipName"] },
-						{ "base", Convert.ToInt32(reader["base"]) == 1 }
-					};
 					parts[setKey].Add(equip);
 				}
-				reader.Close();
 				command.CommandText = @"
 					SELECT
 						ss.SetKey AS setKey,
@@ -1100,7 +1298,7 @@ namespace HeroesDB {
 						s.Name;
 				";
 				reader = command.ExecuteReader();
-				var table = new DataTable();
+				table = new DataTable();
 				table.Load(reader);
 				var sets = new List<Dictionary<String, Object>>();
 				for (var i = 0; i < table.Rows.Count; i += 1) {

@@ -555,6 +555,7 @@ namespace HeroesDB {
 							WHERE
 								e.MaxDurability = 999999 OR
 								i.ExpireIn IS NOT NULL OR
+								i.ItemClass IN ('elculous_wing_test_rear') OR
 								i.ItemClass LIKE '%_limitless' OR
 								i.ItemClass LIKE '%_comback' OR
 								i.ItemClass LIKE '%_comback2' OR
@@ -616,8 +617,16 @@ namespace HeroesDB {
 						qs.Value AS Improvement
 					FROM QualityStatInfo AS qs
 					INNER JOIN (
-						SELECT DISTINCT e.QualityType
+						SELECT e.QualityType
 						FROM EquipItemInfo AS e
+						INNER JOIN HDB_Classification AS c ON
+							c.ObjectType = 'equip' AND
+							c.ObjectID = e._ROWID_
+						UNION
+						SELECT ccp.QualityType
+						FROM CombineCraftInfo AS cc
+						INNER JOIN CombineCraftPartsInfo AS ccp ON ccp.PartsGroup IN (cc.PartsGroup1, cc.PartsGroup2, cc.PartsGroup3, cc.PartsGroup4, cc.PartsGroup5)
+						INNER JOIN EquipItemInfo AS e ON e.ItemClass = cc.ItemClass
 						INNER JOIN HDB_Classification AS c ON
 							c.ObjectType = 'equip' AND
 							c.ObjectID = e._ROWID_
@@ -690,8 +699,16 @@ namespace HeroesDB {
 						en.EnhanceType = ens.EnhanceType AND
 						en.EnhanceLevel = ens.EnhanceLevel
 					INNER JOIN (
-						SELECT DISTINCT e.EnhanceType
+						SELECT e.EnhanceType
 						FROM EquipItemInfo AS e
+						INNER JOIN HDB_Classification AS c ON
+							c.ObjectType = 'equip' AND
+							c.ObjectID = e._ROWID_
+						UNION
+						SELECT ccp.EnhanceType
+						FROM CombineCraftInfo AS cc
+						INNER JOIN CombineCraftPartsInfo AS ccp ON ccp.PartsGroup IN (cc.PartsGroup1, cc.PartsGroup2, cc.PartsGroup3, cc.PartsGroup4, cc.PartsGroup5)
+						INNER JOIN EquipItemInfo AS e ON e.ItemClass = cc.ItemClass
 						INNER JOIN HDB_Classification AS c ON
 							c.ObjectType = 'equip' AND
 							c.ObjectID = e._ROWID_
@@ -758,8 +775,10 @@ namespace HeroesDB {
 									CASE
 										WHEN t.Text IN ('For all Weapons', 'Can enchant to a Weapon') THEN 'For Weapons.'
 										WHEN t.Text = 'For all Armor and Shields.' THEN 'For Armor and Shields.'
-										WHEN t.Text = 'For Cloth Armor and Light Armor' THEN 'For Cloth and Light Armor'
-										WHEN t.Text = 'For Heavy Armor and Plate Armor' THEN 'For Heavy and Plate Armor'
+										WHEN t.Text = 'For Cloth Armor and Light Armor' THEN 'For Cloth and Light Armor.'
+										WHEN t.Text = 'For Heavy Armor and Plate Armor' THEN 'For Heavy and Plate Armor.'
+										WHEN t.Text = 'For Chest Armor' THEN 'For Tunics.'
+										WHEN t.Text LIKE '% for enchanting' THEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(t.Text, ' Armor are available for enchanting', '.'), 'Head', 'Helms'), 'Leg', 'Pants'), 'Hand', 'Gloves'), 'Feet', 'Boots'), 'Armor,', 'Armor''s ')
 										ELSE REPLACE(REPLACE(REPLACE(t.Text, 'Can enchant to a', 'For'), 'Can enchant to', 'For'), 'Can be enchanted with', 'For')
 									END AS Text
 								FROM EnchantInfo AS ei
@@ -841,30 +860,51 @@ namespace HeroesDB {
 				};
 				while (reader.Read()) {
 					insertCommand.Parameters["@EnchantKey"].Value = reader["EnchantKey"];
-					foreach (var restriction in Convert.ToString(reader["Restrictions"]).Split(',')) {
-						if (mapping.ContainsKey(restriction)) {
-							foreach (var filter in mapping[restriction]) {
-								insertCommand.Parameters["@GroupKey"].Value = filter[0];
-								insertCommand.Parameters["@TypeKey"].Value = filter[1];
-								insertCommand.Parameters["@CategoryKey"].Value = filter[2];
-								insertCommand.Parameters["@EquipKey"].Value = null;
+					var restrictions = Convert.ToString(reader["Restrictions"]);
+					// HACK: if they add more restrictions like this, then a real parser should be added
+					if (restrictions.Contains("&")) {
+						var restrictionParts =  Convert.ToString(reader["Restrictions"]).Split('&');
+						restrictionParts[0] = restrictionParts[0].Substring(1, restrictionParts[0].Length - 2);
+						restrictionParts[1] = restrictionParts[1].Substring(1, restrictionParts[1].Length - 2);
+						var restrictionPart0Parts = restrictionParts[0].Split(',');
+						var restrictionPart1Parts = restrictionParts[1].Split(',');
+						insertCommand.Parameters["@EquipKey"].Value = null;
+						foreach (var restriction1 in restrictionPart0Parts) {
+							insertCommand.Parameters["@GroupKey"].Value = mapping[restriction1][0][0];
+							insertCommand.Parameters["@TypeKey"].Value = mapping[restriction1][0][1];
+							var filter = mapping[restriction1][0].Clone();
+							foreach (var restriction2 in restrictionPart1Parts) {
+								insertCommand.Parameters["@CategoryKey"].Value = mapping[restriction2][0][2];
 								insertCommand.ExecuteNonQuery();
 							}
 						}
-						else {
-							equipCommand.Parameters["@Key"].Value = restriction.ToLower();
-							var equipReader = equipCommand.ExecuteReader();
-							if (!equipReader.Read()) {
-								Debug.WriteLine(String.Concat("Ignored restriction: ", restriction));
+					}
+					else {
+						foreach (var restriction in restrictions.Split(',')) {
+							if (mapping.ContainsKey(restriction)) {
+								foreach (var filter in mapping[restriction]) {
+									insertCommand.Parameters["@GroupKey"].Value = filter[0];
+									insertCommand.Parameters["@TypeKey"].Value = filter[1];
+									insertCommand.Parameters["@CategoryKey"].Value = filter[2];
+									insertCommand.Parameters["@EquipKey"].Value = null;
+									insertCommand.ExecuteNonQuery();
+								}
 							}
 							else {
-								insertCommand.Parameters["@GroupKey"].Value = equipReader["GroupKey"];
-								insertCommand.Parameters["@TypeKey"].Value = equipReader["TypeKey"];
-								insertCommand.Parameters["@CategoryKey"].Value = equipReader["CategoryKey"];
-								insertCommand.Parameters["@EquipKey"].Value = equipReader["Key"];
-								insertCommand.ExecuteNonQuery();
+								equipCommand.Parameters["@Key"].Value = restriction.ToLower();
+								var equipReader = equipCommand.ExecuteReader();
+								if (!equipReader.Read()) {
+									Debug.WriteLine(String.Concat("Ignored restriction: ", restriction));
+								}
+								else {
+									insertCommand.Parameters["@GroupKey"].Value = equipReader["GroupKey"];
+									insertCommand.Parameters["@TypeKey"].Value = equipReader["TypeKey"];
+									insertCommand.Parameters["@CategoryKey"].Value = equipReader["CategoryKey"];
+									insertCommand.Parameters["@EquipKey"].Value = equipReader["Key"];
+									insertCommand.ExecuteNonQuery();
+								}
+								equipReader.Close();
 							}
-							equipReader.Close();
 						}
 					}
 				}
@@ -1037,7 +1077,12 @@ namespace HeroesDB {
 						c.Name AS Classification,
 						td.Text AS Description,
 						i.Rarity,
-						CASE WHEN i.ItemClass = 'gold' THEN 3 WHEN i.ItemClass LIKE 'cloth_lvl_' OR i.ItemClass LIKE 'skin_lvl_' OR i.ItemClass LIKE 'iron_ore_lvl_' THEN 2 ELSE 1 END AS [Order]
+						CASE
+							WHEN i.ItemClass = 'gold' THEN 4
+							WHEN i.ItemClass LIKE 'cloth_lvl_' OR i.ItemClass LIKE 'skin_lvl_' OR i.ItemClass LIKE 'iron_ore_lvl_' THEN 3
+							WHEN i.ItemClass LIKE 'combine_%part1_%' THEN 1
+							ELSE 2
+						END AS [Order]
 					FROM HDB_Classification AS c
 					INNER JOIN ItemClassInfo AS i ON i._ROWID_ = c.ObjectID
 					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
@@ -1113,6 +1158,38 @@ namespace HeroesDB {
 						WEIGHT INT NOT NULL,
 						CONSTRAINT [unique] UNIQUE(Key)
 					);
+					DROP TABLE IF EXISTS HDB_tempt;
+					CREATE TABLE HDB_tempt (
+						PartsGroup NVARCHAR NOT NULL,
+						ItemClass NVARCHAR NOT NULL
+					);
+					INSERT INTO HDB_tempt
+					SELECT
+						ccp.PartsGroup,
+						ccp.ItemClass
+					FROM CombineCraftPartsInfo AS ccp
+					INNER JOIN (
+						SELECT
+							ccp.PartsGroup,
+							p.grade,
+							MAX(SUBSTR(ccp.ItemClass, LENGTH(ccp.ItemClass), 1)) AS quality
+						FROM CombineCraftPartsInfo AS ccp
+						INNER JOIN (
+							SELECT
+								ccp.PartsGroup,
+								MAX(SUBSTR(ccp.ItemClass, LENGTH(ccp.ItemClass) - 2, 1)) AS grade
+							FROM CombineCraftPartsInfo AS ccp
+							GROUP BY ccp.PartsGroup
+						) AS p ON
+							p.PartsGroup = ccp.PartsGroup AND
+							p.grade = SUBSTR(ccp.ItemClass, LENGTH(ccp.ItemClass) - 2, 1)
+						GROUP BY
+							ccp.PartsGroup,
+							p.grade
+					) AS p ON
+						p.PartsGroup = ccp.PartsGroup AND
+						p.grade = SUBSTR(ccp.ItemClass, LENGTH(ccp.ItemClass) - 2, 1) AND
+						p.quality = SUBSTR(ccp.ItemClass, LENGTH(ccp.ItemClass), 1);
 					INSERT INTO HDB_Equips
 					SELECT
 						c.ObjectID AS ID,
@@ -1124,7 +1201,7 @@ namespace HeroesDB {
 						tn.Text AS Name,
 						c.Name AS classification,
 						td.Text AS Description,
-						i.Rarity,
+						COALESCE(e.Rarity, i.Rarity) AS Rarity,
 						LOWER(e.QualityType) AS QualityTypeKey,
 						LOWER(e.EnhanceType) AS EnhanceTypeKey,
 						NULL AS SetKey,
@@ -1150,7 +1227,66 @@ namespace HeroesDB {
 						e.MaxDurability / 100 AS DURABILITY,
 						e.Weight AS WEIGHT
 					FROM HDB_Classification AS c
-					INNER JOIN EquipItemInfo AS e ON e._ROWID_ = c.ObjectID
+					INNER JOIN (
+						SELECT
+							e._ROWID_ AS ID,
+							e.ItemClass,
+							ce.Rarity,
+							COALESCE(ce.QualityType, e.QualityType) AS QualityType,
+							COALESCE(ce.EnhanceType, e.EnhanceType) AS EnhanceType,
+							COALESCE(ce.ATK, e.ATK) AS ATK,
+							COALESCE(ce.MATK, e.MATK) AS MATK,
+							COALESCE(ce.ATK_Speed, e.ATK_Speed) AS ATK_Speed,
+							COALESCE(ce.Critical, e.Critical) AS Critical,
+							COALESCE(ce.Balance, e.Balance) AS Balance,
+							COALESCE(ce.HP, e.HP) AS HP,
+							COALESCE(ce.DEF, e.DEF) AS DEF,
+							COALESCE(ce.Res_Critical, e.Res_Critical) AS Res_Critical,
+							COALESCE(ce.STR, e.STR) AS STR,
+							COALESCE(ce.INT, e.INT) AS INT,
+							COALESCE(ce.DEX, e.DEX) AS DEX,
+							COALESCE(ce.WILL, e.WILL) AS WILL,
+							COALESCE(ce.STAMINA, e.STAMINA) AS STAMINA,
+							e.MaxDurability,
+							e.Weight,
+							e.Material1,
+							e.Material2,
+							e.Material3
+						FROM EquipItemInfo AS e
+						LEFT JOIN (
+							SELECT
+								ce.*,
+								ccp.QualityType,
+								ccp.EnhanceType,
+								ccp.EnchantMaxLevel
+							FROM (
+								SELECT
+									cc.ItemClass,
+									MAX(i.Rarity) AS Rarity,
+									SUM(ccp.ATK) AS ATK,
+									SUM(ccp.MATK) AS MATK,
+									SUM(ccp.ATK_Speed) AS ATK_Speed,
+									SUM(ccp.Critical) AS Critical,
+									SUM(ccp.Balance) AS Balance,
+									SUM(ccp.HP) AS HP,
+									SUM(ccp.DEF) AS DEF,
+									SUM(ccp.Res_Critical) AS Res_Critical,
+									SUM(ccp.STR) AS STR,
+									SUM(ccp.DEX) AS DEX,
+									SUM(ccp.INT) AS INT,
+									SUM(ccp.WILL) AS WILL,
+									SUM(ccp.STAMINA) AS STAMINA
+								FROM CombineCraftInfo AS cc
+								INNER JOIN HDB_tempt AS bp ON bp.PartsGroup IN (cc.PartsGroup1, cc.PartsGroup2, cc.PartsGroup3, cc.PartsGroup4, cc.PartsGroup5)
+								INNER JOIN CombineCraftPartsInfo AS ccp ON ccp.ItemClass = bp.ItemClass
+								INNER JOIN ItemClassInfo AS i ON i.ItemClass = ccp.ItemClass
+								GROUP BY cc.ItemClass
+							) AS ce
+							INNER JOIN CombineCraftInfo AS cc ON cc.ItemClass = ce.ItemClass
+							INNER JOIN HDB_tempt AS bp ON bp.PartsGroup = cc.PartsGroup1
+							INNER JOIN CombineCraftPartsInfo AS ccp ON ccp.ItemClass = bp.ItemClass
+						) AS ce ON ce.ItemClass = e.ItemClass
+					) AS e ON e.ID = c.ObjectID
 					INNER JOIN ItemClassInfo AS i ON i.ItemClass = e.ItemClass
 					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
 					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
@@ -1192,8 +1328,6 @@ namespace HeroesDB {
 						MatKey NVARCHAR NOT NULL,
 						MatCount INT NOT NULL,
 						AppearQuestName NVARCHAR,
-						ExpertiseName NVARCHAR,
-						ExpertiseExperienceRequired INT,
 						CONSTRAINT [unique] UNIQUE(EquipKey, Type, MatKey)
 					);
 					INSERT INTO HDB_EquipRecipes
@@ -1202,9 +1336,7 @@ namespace HeroesDB {
 						fr.RecipeType AS Type,
 						m.Key AS MatKey,
 						rm.Num AS MatCount,
-						t.Text AS AppearQuestName,
-						NULL AS ExpertiseName,
-						NULL AS ExpertiseExperienceRequired
+						t.Text AS AppearQuestName
 					FROM HDB_Equips AS e
 					INNER JOIN RecipeMaterialInfo AS rmr ON
 						rmr.Type = 0 AND
@@ -1236,13 +1368,76 @@ namespace HeroesDB {
 					LEFT JOIN HDB_Text AS t ON t.Key = 'HEROES_QUEST_TITLE_' || UPPER(cs.AppearQuestID);
 					INSERT INTO HDB_EquipRecipes
 					SELECT
+						t.EquipKey,
+						'npc' AS Type,
+						t.MatKey,
+						1 AS MatCount,
+						tq.Text AS AppearQuestName
+					FROM (
+						SELECT DISTINCT
+							e.Key AS EquipKey,
+							ici.ItemClass AS MatKey
+						FROM HDB_Equips AS e
+						INNER JOIN (
+							SELECT
+								cci.ItemClass AS EquipKey,
+								cci.PartsGroup1 AS PartGroup
+							FROM CombineCraftInfo AS cci
+							WHERE cci.PartsGroup1 IS NOT NULL
+							UNION ALL
+							SELECT
+								cci.ItemClass,
+								cci.PartsGroup2
+							FROM CombineCraftInfo AS cci
+							WHERE cci.PartsGroup2 IS NOT NULL
+							UNION ALL
+							SELECT
+								cci.ItemClass,
+								cci.PartsGroup3
+							FROM CombineCraftInfo AS cci
+							WHERE cci.PartsGroup3 IS NOT NULL
+							UNION ALL
+							SELECT
+								cci.ItemClass,
+								cci.PartsGroup4
+							FROM CombineCraftInfo AS cci
+							WHERE cci.PartsGroup4 IS NOT NULL
+							UNION ALL
+							SELECT
+								cci.ItemClass,
+								cci.PartsGroup5
+							FROM CombineCraftInfo AS cci
+							WHERE cci.PartsGroup5 IS NOT NULL
+						) AS cci ON cci.EquipKey = e.Key
+						INNER JOIN CombineCraftPartsInfo AS ccpi ON ccpi.PartsGroup = cci.PartGroup
+						INNER JOIN ItemClassInfo AS ici ON ici.ItemClass = SUBSTR(ccpi.ItemClass, 1, LENGTH(ccpi.ItemClass) - 4)
+					) AS t
+					INNER JOIN CombineCraftInfo AS cci ON cci.ItemClass = t.EquipKey
+					LEFT JOIN HDB_Text AS tq ON tq.Key = 'HEROES_QUEST_TITLE_' || UPPER(cci.AppearQuestID)
+					UNION ALL
+					SELECT
+						cci.ItemClass AS EquipKey,
+						'npc' AS Type,
+						'gold' AS MatKey,
+						350000 AS MatCount,
+						tq.Text AS AppearQuestName
+					FROM CombineCraftInfo AS cci
+					LEFT JOIN HDB_Text AS tq ON tq.Key = 'HEROES_QUEST_TITLE_' || UPPER(cci.AppearQuestID);
+					DROP TABLE IF EXISTS HDB_tempt;
+					CREATE TABLE HDB_tempt (
+						EquipKey NVARCHAR NOT NULL,
+						Type NVARCHAR NOT NULL,
+						MatKey NVARCHAR NOT NULL,
+						MatCount INT NOT NULL,
+						AppearQuestName NVARCHAR
+					);
+					INSERT INTO HDB_tempt
+					SELECT 
 						e.Key AS EquipKey,
 						fr.RecipeType AS Type,
 						m.Key AS MatKey,
 						mm.Num AS MatCount,
-						NULL AS AppearQuestName,
-						t.Text AS ExpertiseName,
-						mr.ExperienceRequired AS ExpertiseExperienceRequired
+						NULL AS AppearQuestName
 					FROM HDB_Equips AS e
 					INNER JOIN ManufactureMaterialInfo AS mmr ON
 						mmr.Type = 0 AND
@@ -1257,7 +1452,40 @@ namespace HeroesDB {
 					INNER JOIN ManufactureMaterialInfo AS mm ON
 						mm.Type = 1 AND
 						mm.RecipeID = mr.RecipeID
-					LEFT JOIN HDB_Mats AS m ON m.Key = LOWER(mm.ItemClass)
+					LEFT JOIN HDB_Mats AS m ON m.Key = LOWER(mm.ItemClass);
+					INSERT INTO HDB_EquipRecipes
+					SELECT DISTINCT t.*
+					FROM HDB_tempt AS t;
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EquipRecipeExpertises;
+					CREATE TABLE HDB_EquipRecipeExpertises (
+						EquipKey NVARCHAR NOT NULL,
+						Name NVARCHAR,
+						ExperienceRequired INT,
+						CONSTRAINT [unique] UNIQUE(EquipKey, Name)
+					);
+					INSERT INTO HDB_EquipRecipeExpertises
+					SELECT
+						er.EquipKey,
+						t.Text AS ExpertiseName,
+						mr.ExperienceRequired AS ExperienceRequired
+					FROM (
+						SELECT DISTINCT er.EquipKey
+						FROM HDB_EquipRecipes AS er
+					) AS er
+					INNER JOIN ManufactureMaterialInfo AS mmr ON
+						mmr.Type = 0 AND
+						LOWER(mmr.ItemClass) = er.EquipKey AND
+						mmr.RecipeID != 'sewing_ingkara_lower'
+					INNER JOIN ManufactureRecipeInfo AS mr ON mr.RecipeID = mmr.RecipeID
+					INNER JOIN HDB_FeaturedRecipes AS fr ON
+						fr.RecipeType = 'pc' AND
+						fr.RecipeKey = LOWER(mr.RecipeID) AND (
+							fr.RecipeFeature = mr.Feature OR
+							COALESCE(fr.RecipeFeature, mr.Feature) IS NULL
+						)
 					LEFT JOIN HDB_Text AS t ON t.Key = 'GAMEUI_HEROES_MANUFACTURE_CRAFTNAME_' || UPPER(mr.ManufactureID);
 				";
 				command.ExecuteNonQuery();
@@ -1296,6 +1524,72 @@ namespace HeroesDB {
 							)
 					) AS t
 					LEFT JOIN HDB_Text AS tn ON tn.Key = 'HEROES_NPC_' || UPPER(t.ShopKey);
+					INSERT INTO HDB_EquipRecipeShops
+					SELECT
+						cci.ItemClass AS EquipKey,
+						'dianann' AS ShopKey,
+						tn.Text AS ShopName
+					FROM CombineCraftInfo AS cci
+					LEFT JOIN HDB_Text AS tn ON tn.Key = 'HEROES_NPC_DIANANN';
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EquipPartGroups;
+					CREATE TABLE HDB_EquipPartGroups (
+						EquipKey NVARCHAR NOT NULL,
+						Key NVARCHAR NOT NULL,
+						IconKey NVARCHAR NOT NULL,
+						[Order] INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(EquipKey, Key)
+					);
+					INSERT INTO HDB_EquipPartGroups
+					SELECT
+						e.Key AS EquipKey,
+						cci.PartGroup AS Key,
+						cci.PartGroupIconKey AS IconKey,
+						cci.PartGroupOrder AS [Order]
+					FROM HDB_Equips AS e
+					INNER JOIN (
+						SELECT
+							cci.ItemClass AS EquipKey,
+							cci.PartsGroup1 AS PartGroup,
+							cci.PartsGroupIcon1 AS PartGroupIconKey,
+							1 AS PartGroupOrder
+						FROM CombineCraftInfo AS cci
+						WHERE cci.PartsGroup1 IS NOT NULL
+						UNION ALL
+						SELECT
+							cci.ItemClass,
+							cci.PartsGroup2,
+							cci.PartsGroupIcon2,
+							2 AS PartsGroupOrder
+						FROM CombineCraftInfo AS cci
+						WHERE cci.PartsGroup2 IS NOT NULL
+						UNION ALL
+						SELECT
+							cci.ItemClass,
+							cci.PartsGroup3,
+							cci.PartsGroupIcon3,
+							3 AS PartsGroupOrder
+						FROM CombineCraftInfo AS cci
+						WHERE cci.PartsGroup3 IS NOT NULL
+						UNION ALL
+						SELECT
+							cci.ItemClass,
+							cci.PartsGroup4,
+							cci.PartsGroupIcon4,
+							4 AS PartsGroupOrder
+						FROM CombineCraftInfo AS cci
+						WHERE cci.PartsGroup4 IS NOT NULL
+						UNION ALL
+						SELECT
+							cci.ItemClass,
+							cci.PartsGroup5,
+							cci.PartsGroupIcon5,
+							5 AS PartsGroupOrder
+						FROM CombineCraftInfo AS cci
+						WHERE cci.PartsGroup5 IS NOT NULL
+					) AS cci ON cci.EquipKey = e.Key;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -1352,6 +1646,169 @@ namespace HeroesDB {
 			Debug.Unindent();
 			Debug.WriteLine("}");
 		}
+
+		public void SetEquipParts() {
+			Debug.WriteLine("SetEquipParts() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
+				connection.Open();
+				var command = connection.CreateCommand();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_EquipParts;
+					CREATE TABLE HDB_EquipParts (
+						Key NVARCHAR NOT NULL,
+						EquipPartGroupKey NVARCHAR NOT NULL,
+						IconKey NVARCHAR,
+						Name NVARCHAR NOT NULL,
+						Description NVARCHAR,
+						Rarity INT NOT NULL,
+						QualityTypeKey NVARCHAR,
+						EnhanceTypeKey NVARCHAR,
+						ATK INT NOT NULL,
+						PATK INT NOT NULL,
+						MATK INT NOT NULL,
+						SPEED INT NOT NULL,
+						CRIT INT NOT NULL,
+						BAL INT NOT NULL,
+						HP INT NOT NULL,
+						DEF INT NOT NULL,
+						CRITRES INT NOT NULL,
+						STR INT NOT NULL,
+						INT INT NOT NULL,
+						DEX INT NOT NULL,
+						WILL INT NOT NULL,
+						MaxEnchantLevel INT,
+						CONSTRAINT [unique] UNIQUE(Key)
+					);
+					INSERT INTO HDB_EquipParts
+					SELECT
+						ccpi.ItemClass AS Key,
+						epg.Key AS EquipPartGroupKey,
+						ico.Key AS IconKey,
+						tn.Text AS Name,
+						td.Text AS Description,
+						ici.Rarity,
+						ccpi.QualityType AS QualityTypeKey,
+						ccpi.EnhanceType AS EnhanceTypeKey,
+						CASE WHEN ccpi.MATK > 0 THEN ccpi.MATK ELSE ccpi.ATK END AS ATK,
+						ccpi.ATK AS PATK,
+						ccpi.MATK,
+						ccpi.ATK_Speed AS SPEED,
+						ccpi.Critical AS CRIT,
+						ccpi.Balance AS BAL,
+						ccpi.HP,
+						ccpi.DEF,
+						ccpi.Res_Critical AS CRITRES,
+						ccpi.STR,
+						ccpi.INT,
+						ccpi.DEX,
+						ccpi.WILL,
+						ccpi.EnchantMaxLevel AS MaxEnchantLevel
+					FROM (
+						SELECT DISTINCT epg.Key
+						FROM HDB_EquipPartGroups AS epg
+					) AS epg
+					INNER JOIN CombineCraftPartsInfo AS ccpi ON ccpi.PartsGroup = epg.Key
+					INNER JOIN ItemClassInfo AS ici ON ici.ItemClass = ccpi.ItemClass
+					LEFT JOIN HDB_Icons AS ico ON ico.Icon = ici.Icon
+					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(ici.ItemClass)
+					LEFT JOIN HDB_Text AS td ON td.Key = 'HEROES_ITEM_DESC_' || UPPER(ici.ItemClass)
+					WHERE
+						ccpi.ItemClass IN (
+							SELECT MAX(ccpi.ItemClass)
+							FROM CombineCraftPartsInfo AS ccpi
+							INNER JOIN ItemClassInfo AS ici ON ici.ItemClass = ccpi.ItemClass
+							GROUP BY
+								ccpi.PartsGroup,
+								ici.rarity
+						);
+				";
+				command.ExecuteNonQuery();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
+		public void SetBaseEquips() {
+			Debug.WriteLine("SetBaseEquips() {");
+			Debug.Indent();
+			using (var connection = new SQLiteConnection(this.config.ConnectionString)) {
+				connection.Open();
+				var transaction = connection.BeginTransaction();
+				var command = connection.CreateCommand();
+				command.Transaction = transaction;
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_BaseEquips;
+					CREATE TABLE HDB_BaseEquips (
+						ID INT PRIMARY KEY,
+						Key NVARCHAR NOT NULL,
+						IconKey NVARCHAR,
+						Name NVARCHAR NOT NULL,
+						Description NVARCHAR,
+						CONSTRAINT [unique] UNIQUE(Key)
+					);
+					INSERT INTO HDB_BaseEquips
+					SELECT 
+						i._ROWID_ AS ID,
+						LOWER(i.ItemClass) AS Key,
+						ico.Key AS IconKey,
+						tn.Text AS Name,
+						td.Text AS Description
+					FROM (
+						SELECT DISTINCT si.BaseItemClass
+						FROM SetItemInfo AS si
+						WHERE si.BaseItemClass != si.ItemClass
+					) AS be
+					LEFT JOIN ItemClassInfo i ON i.ItemClass = be.BaseItemClass
+					LEFT JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass)
+					LEFT JOIN HDB_Text AS td ON
+						td.Key = 'HEROES_ITEM_DESC_' || UPPER(i.ItemClass) AND
+						td.Text != tn.Text
+					LEFT JOIN (
+						SELECT
+							MIN(ico.Key) AS Key,
+							ico.Icon,
+							ico.IconBG
+						FROM HDB_Icons AS ico
+						GROUP BY
+							ico.Icon,
+							ico.IconBG
+					) ico ON
+						ico.Icon = i.Icon AND (
+							ico.IconBG = i.IconBG OR
+							COALESCE(ico.IconBG, i.IconBG) IS NULL
+						)
+					ORDER BY i._ROWID_;
+				";
+				command.ExecuteNonQuery();
+				command.CommandText = @"
+					DROP TABLE IF EXISTS HDB_BaseEquipEquips;
+					CREATE TABLE HDB_BaseEquipEquips (
+						BaseEquipKey NVARCHAR NOT NULL,
+						EquipKey NVARCHAR NOT NULL,
+						EquipIconKey NVARCHAR,
+						EquipName NVARCHAR NOT NULL,
+						EquipClassRestriction INT NOT NULL,
+						CONSTRAINT [unique] UNIQUE(BaseEquipKey, EquipKey)
+					);
+					INSERT INTO HDB_BaseEquipEquips
+					SELECT
+						be.Key AS BaseEquipKey,
+						e.Key AS EquipKey,
+						e.IconKey AS EquipIconKey,
+						e.Name AS EquipName,
+						e.ClassRestriction AS EquipClassRestriction
+					FROM HDB_BaseEquips AS be
+					INNER JOIN SetItemInfo AS si ON LOWER(si.BaseItemClass) = be.Key
+					INNER JOIN HDB_Equips AS e ON e.key = LOWER(si.ItemClass);
+				";
+				command.ExecuteNonQuery();
+				transaction.Commit();
+			}
+			Debug.Unindent();
+			Debug.WriteLine("}");
+		}
+
 
 		public void SetSets() {
 			Debug.WriteLine("SetSets() {");
@@ -1431,45 +1888,41 @@ namespace HeroesDB {
 					INNER JOIN (
 						SELECT
 							s.SetID,
-							MAX(CASE WHEN i.Category = 'HELM' THEN ico.Key ELSE NULL END) AS IconKey,
-							MAX(i.Rarity) AS Rarity,
-							MAX(i.RequiredLevel) AS RequiredLevel,
-							MAX(i.ClassRestriction) AS ClassRestriction,
-							SUM(CASE WHEN e.MATK > 0 THEN e.MATK ELSE e.ATK END) AS ATK,
+							MAX(CASE WHEN e.CategoryKey = 'helm' THEN e.IconKey ELSE NULL END) AS IconKey,
+							MAX(e.Rarity) AS Rarity,
+							MAX(e.RequiredLevel) AS RequiredLevel,
+							MAX(si.ClassRestriction) AS ClassRestriction,
+							SUM(e.ATK) AS ATK,
 							SUM(e.ATK) AS PATK,
 							SUM(e.MATK) AS MATK,
-							SUM(e.ATK_Speed) AS SPEED,
-							SUM(e.Critical) AS CRIT,
-							SUM(e.Balance) AS BAL,
+							SUM(e.SPEED) AS SPEED,
+							SUM(e.CRIT) AS CRIT,
+							SUM(e.BAL) AS BAL,
 							SUM(e.HP) AS HP,
 							SUM(e.DEF) AS DEF,
-							SUM(e.Res_Critical) AS CRITRES,
+							SUM(e.CRITRES) AS CRITRES,
 							SUM(e.STR) AS STR,
 							SUM(e.INT) AS INT,
 							SUM(e.DEX) AS DEX,
 							SUM(e.WILL) AS WILL,
 							SUM(e.STAMINA) AS STAMINA,
-							SUM(e.Weight) AS WEIGHT
+							SUM(e.WEIGHT) AS WEIGHT
 						FROM SetInfo AS s
-						INNER JOIN SetItemInfo AS si ON si.SetID = s.SetID
-						INNER JOIN ItemClassInfo AS i ON i.ItemClass = si.BaseItemClass
-						INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
-						INNER JOIN EquipItemInfo AS e ON e.ItemClass = i.ItemClass
-						INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
-						LEFT JOIN HDB_Icons AS ico ON
-							ico.Icon = i.Icon AND (
-								ico.IconBG = i.IconBG OR
-								COALESCE(ico.IconBG, i.IconBG) IS NULL
-							) AND (
-								ico.Material1 = e.Material1 OR
-								COALESCE(ico.Material1, e.Material1) IS NULL
-							) AND (
-								ico.Material2 = e.Material2 OR
-								COALESCE(ico.Material2, e.Material2) IS NULL
-							) AND (
-								ico.Material3 = e.Material3 OR
-								COALESCE(ico.Material3, e.Material3) IS NULL
-							)
+						INNER JOIN (
+							SELECT
+								si.SetID AS SetKey,
+								MAX(e.Key) AS EquipKey,
+								SUM(e.ClassRestriction) AS ClassRestriction
+							FROM SetItemInfo AS si
+							LEFT JOIN HDB_BaseEquipEquips AS bee ON bee.BaseEquipKey = LOWER(si.BaseItemClass)
+							INNER JOIN HDB_Equips AS e ON e.Key = COALESCE(bee.EquipKey, LOWER(si.BaseItemClass))
+							GROUP BY
+								si.SetID,
+								si.BaseItemClass
+						) AS si ON si.SetKey = s.SetID
+						INNER JOIN HDB_Equips AS e ON
+							e.Key = si.EquipKey AND
+							e.GroupKey = 'armor'
 						GROUP BY s.SetID
 					) AS ss ON ss.SetID = s.SetID
 					LEFT JOIN (
@@ -1485,6 +1938,7 @@ namespace HeroesDB {
 							SUM(CASE WHEN se.EffectTarget = 'DEX' THEN se.Amount ELSE 0 END) AS DEX,
 							SUM(CASE WHEN se.EffectTarget = 'WILL' THEN se.Amount ELSE 0 END) AS WILL
 						FROM SetEffectInfo AS se
+						/*
 						INNER JOIN (
 							SELECT
 								se.SetID,
@@ -1498,6 +1952,29 @@ namespace HeroesDB {
 							sem.SetID = se.SetID AND
 							sem.EffectTarget = se.EffectTarget AND
 							sem.MaxSetCount = se.SetCount
+						*/
+						INNER JOIN (
+							SELECT
+								si.SetID,
+								COUNT(*) AS SetCount
+							FROM (
+								SELECT
+									si.SetID,
+									MAX(e.Key) AS EquipKey
+								FROM SetItemInfo AS si
+								LEFT JOIN HDB_BaseEquipEquips AS bee ON bee.BaseEquipKey = LOWER(si.BaseItemClass)
+								INNER JOIN HDB_Equips AS e ON e.Key = COALESCE(bee.EquipKey, LOWER(si.BaseItemClass))
+								GROUP BY
+									si.SetID,
+									si.BaseItemClass
+							) AS si
+							INNER JOIN HDB_Equips AS e ON
+								e.Key = si.EquipKey AND
+								e.GroupKey = 'armor'
+							GROUP BY si.SetID
+						) AS sem ON
+							sem.SetID = se.SetID AND
+							sem.SetCount = se.SetCount
 						GROUP BY se.SetID
 					) AS se ON se.SetID = s.SetID;
 				";
@@ -1522,7 +1999,7 @@ namespace HeroesDB {
 					DROP TABLE IF EXISTS HDB_SetParts;
 					CREATE TABLE HDB_SetParts (
 						SetKey NVARCHAR NOT NULL,
-						EquipKey NVARCHAR,
+						EquipKey NVARCHAR NOT NULL,
 						EquipName NVARCHAR NOT NULL,
 						Base INT NOT NULL,
 						[Order] INT NOT NULL,
@@ -1531,37 +2008,39 @@ namespace HeroesDB {
 					INSERT INTO HDB_SetParts
 					SELECT
 						s.Key AS SetKey,
-						e.Key AS EquipKey,
-						tn.Text AS EquipName,
-						CASE WHEN sibi.SetID IS NULL THEN 0 ELSE 1 END AS Base,
-						CASE i.Category WHEN 'WEAPON' THEN 1 WHEN 'HELM' THEN 2 WHEN 'TUNIC' THEN 3 WHEN 'PANTS' THEN 4 WHEN 'GLOVES' THEN 5 WHEN 'BOOTS' THEN 6 ELSE 7 END AS [Order]
+						COALESCE(be.Key, e.Key) AS EquipKey,
+						COALESCE(be.Name, e.Name) AS EquipName,
+						CASE WHEN be.ID IS NOT NULL THEN 1 ELSE 0 END AS Base,
+						CASE
+							WHEN em.GroupKey = 'armor' THEN
+								CASE em.CategoryKey WHEN 'helm' THEN 10 WHEN 'tunic' THEN 11 WHEN 'pants' THEN 12 WHEN 'gloves' THEN 13 WHEN 'boots' THEN 14 ELSE 15 END
+							WHEN em.GroupKey = 'weapon' THEN 20
+							ELSE 30
+						END AS [Order]
 					FROM HDB_Sets AS s
 					INNER JOIN (
-						SELECT
-							si.SetID,
-							si.ItemClass
-						FROM SetItemInfo AS si
-						UNION
-						SELECT
-							si.SetID,
-							si.BaseItemClass
-						FROM SetItemInfo AS si
-					) AS siai ON LOWER(siai.SetID) = s.Key
-					LEFT JOIN (
 						SELECT DISTINCT
 							si.SetID,
 							si.BaseItemClass
 						FROM SetItemInfo AS si
-					) AS sibi ON
-						sibi.SetID = siai.SetID AND
-						sibi.BaseItemClass = siai.ItemClass
-					INNER JOIN ItemClassInfo AS i ON i.ItemClass = siai.ItemClass
-					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
-					LEFT JOIN HDB_Equips AS e ON e.Key = LOWER(i.ItemClass)
-					LEFT JOIN HDB_Classification AS c ON
-						c.ObjectType = 'equip' AND
-						c.ObjectID = e.ID
-					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(i.ItemClass);
+					) AS si ON LOWER(si.SetID) = s.Key
+					LEFT JOIN HDB_Equips AS e ON e.Key = LOWER(si.BaseItemClass)
+					LEFT JOIN HDB_BaseEquips AS be ON be.Key = LOWER(si.BaseItemClass)
+					INNER JOIN (
+						SELECT
+							LOWER(si.SetID) AS SetKey,
+							LOWER(si.BaseItemClass) AS BaseEquipKey,
+							MAX(e.Key) AS EquipKey
+						FROM SetItemInfo AS si
+						LEFT JOIN HDB_BaseEquipEquips AS bee ON bee.BaseEquipKey = LOWER(si.BaseItemClass)
+						INNER JOIN HDB_Equips AS e ON e.Key = COALESCE(bee.EquipKey, LOWER(si.BaseItemClass))
+						GROUP BY
+							LOWER(si.SetID),
+							LOWER(si.BaseItemClass)
+					) AS sim ON
+						sim.SetKey = s.Key AND
+						sim.BaseEquipKey = LOWER(si.BaseItemClass)
+					LEFT JOIN HDB_Equips AS em ON em.Key = sim.EquipKey;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -1664,7 +2143,9 @@ namespace HeroesDB {
 							END AS Camera
 						FROM HDB_Characters AS c
 					) AS sc ON sc.CharacterID = c.ID
-					WHERE s.GroupKey = 'armor';
+					WHERE
+						s.GroupKey = 'armor' AND
+						s.Key != 'braha_set';
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -1680,7 +2161,7 @@ namespace HeroesDB {
 					SELECT
 						ss.SetKey,
 						ss.CharacterID,
-						sp.EquipKey,
+						e.Key AS EquipKey,
 						NULL AS EquipCostumeKey
 					FROM (
 						SELECT DISTINCT
@@ -1689,9 +2170,14 @@ namespace HeroesDB {
 						FROM HDB_SetScreenshots AS ss
 					) AS ss
 					INNER JOIN HDB_SetParts AS sp ON sp.SetKey = ss.SetKey
+					LEFT JOIN HDB_BaseEquipEquips AS bee ON bee.BaseEquipKey = sp.EquipKey
 					INNER JOIN HDB_Equips AS e ON
-						e.Key = sp.EquipKey AND
-						e.GroupKey IN ('armor', 'weapon') AND
+						e.Key = COALESCE(bee.EquipKey, sp.EquipKey) AND (
+							e.GroupKey = 'armor' OR (
+								e.GroupKey = 'weapon' AND
+								e.CategoryKey IN ('battleglaive', 'bow', 'dualsword', 'greatsword', 'longblade', 'longsword', 'pillar', 'staff')
+							)
+						) AND
 						e.ClassRestriction = e.ClassRestriction | ss.CharacterID;
 				";
 				command.ExecuteNonQuery();

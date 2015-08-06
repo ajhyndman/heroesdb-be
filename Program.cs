@@ -92,6 +92,7 @@ namespace HeroesDB {
 				var cfg = new Config();
 				var ext = new Extractor();
 				var stp = new Setuper(cfg);
+				var exp = new Exporter(cfg);
 				stp.ImportText();
 				stp.SetFeaturedItems();
 				stp.SetFeaturedEquips();
@@ -103,14 +104,15 @@ namespace HeroesDB {
 				stp.SetQualityTypes();
 				stp.SetEnhanceTypes();
 				stp.SetEquips();
+				stp.SetEquipParts();
+				stp.SetBaseEquips();
 				stp.SetSets();
 				stp.SetEnchants();
 				stp.SetScreenshots();
 				var ssr = new Screenshoter(cfg);
 				ssr.Screenshot();
-				var exp = new Exporter(cfg);
-				exp.ExportClassification();
 				exp.ExportIcons();
+				exp.ExportClassification();
 				exp.ExportCharacters();
 				exp.ExportMats();
 				exp.ExportQualityTypes();
@@ -118,9 +120,10 @@ namespace HeroesDB {
 				exp.ExportEnchants();
 				exp.ExportScreenshots();
 				exp.ExportEquips();
+				exp.ExportEquipParts();
 				exp.ExportSets();
 				exp.ExportSitemap();
-//					MissingMaterials(cfg);
+//				MissingMaterials(cfg);
 //				Color(cfg);
 			}
 			catch (Exception exception) {

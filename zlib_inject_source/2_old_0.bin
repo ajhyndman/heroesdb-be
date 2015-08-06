@@ -114,7 +114,7 @@
 		"color"		"23158622 27038863 23087683"
 		"pollution"		"0"
 	}
-	"shield"
+	"second_weapon"
 	{
 		"name"		"models/weapon/largeshield/largeshield_s2ep2_heremon.mdl"
 		"color"		"26644355 19803180 662732928"
