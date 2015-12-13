@@ -1,0 +1,129 @@
+"costume"
+{
+	"base"
+	{
+		"sn"		"9"
+		"color"		"8421504 8421504 8421504"
+		"pollution"		"0"
+	}
+	"inner_armor"
+	{
+		"sn"		"8011"
+		"color"		"25132927 25132927 25132927"
+		"pollution"		"0"
+	}
+	"face"
+	{
+		"sn"		"90"
+		"color"		"32962294 33496576 26770284"
+		"pollution"		"0"
+	}
+	"hair"
+	{
+		"sn"		"8001"
+		"color"		"20719394 -7445356 -11571283"
+		"pollution"		"0"
+	}
+	"upper_body"
+	{
+		"sn"		"283"
+		"color"		"23488620 22696006 21129819"
+		"pollution"		"0"
+	}
+	"lower_body"
+	{
+		"sn"		"283"
+		"color"		"24014446 22696006 18487833"
+		"pollution"		"0"
+	}
+	"head"
+	{
+		"sn"		"283"
+		"color"		"28141087 23290209 965630133"
+		"pollution"		"0"
+	}
+	"foot"
+	{
+		"sn"		"283"
+		"color"		"24211825 24080239 23356516"
+		"pollution"		"0"
+	}
+	"hand"
+	{
+		"sn"		"283"
+		"color"		"24343411 22696006 22369621"
+		"pollution"		"0"
+	}
+	"rear"
+	{
+		"sn"		"-1"
+		"color"		"25132927 25132927 25132927"
+		"pollution"		"0"
+	}
+	"motion"
+	{
+		"sn"		"90"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"common_motion"
+	{
+		"sn"		"-1"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"eyebrows"
+	{
+		"sn"		"10001"
+		"color"		"21574182 16777215 0"
+	}
+	"makeup"
+	{
+		"sn"		"-1"
+		"color"		"17435141 8421504 8421504"
+	}
+	"painting"
+	{
+		"sn"		"-1"
+		"color"		"5107457 975387 7880316"
+	}
+	"scar"
+	{
+		"sn"		"-1"
+		"color"		"0 0 0"
+	}
+	"beard"
+	{
+		"sn"		"-1"
+		"color"		"27752791 16777215 0"
+	}
+	"piercing"
+	{
+		"sn"		"-1"
+		"color"		"0 0 0"
+	}
+	"face_paint_rotate"		"0"
+	"face_paint_pos_x"		"100"
+	"face_paint_pos_y"		"100"
+	"face_paint_scale"		"50"
+	"face_shineness"		"2"
+	"body_painting"
+	{
+		"sn"		"-1"
+		"color"		"-8355712 -8355712 -8355712"
+	}
+	"body_paint_surface_side"		"0"
+	"body_paint_rotate"		"0"
+	"body_paint_pos_x"		"100"
+	"body_paint_pos_y"		"100"
+	"body_paint_scale"		"50"
+	"body_paint_clip"		"0"
+	"body_paint_blend"		"0"
+	"weapon"
+	{
+		"name"		"weapon_phantomdagger"
+		"sub_type"		"10037"
+		"color"		"968071287 27699366 20066866"
+		"pollution"		"0"
+	}
+}

@@ -126,7 +126,7 @@ namespace HeroesDB {
 					);
 					INSERT INTO HDB_Characters
 					SELECT
-						CASE tn.Text WHEN 'Lann' THEN 1 WHEN 'Fiona' THEN 2 WHEN 'Evie' THEN 4 WHEN 'Karok' THEN 8 WHEN 'Karok' THEN 8 WHEN 'Kai' THEN 16 WHEN 'Vella' THEN 32 WHEN 'Hurk' THEN 64 WHEN 'Lynn' THEN 128 WHEN 'Arisha' THEN 256 END AS ID,
+						CASE tn.Text WHEN 'Lann' THEN 1 WHEN 'Fiona' THEN 2 WHEN 'Evie' THEN 4 WHEN 'Karok' THEN 8 WHEN 'Karok' THEN 8 WHEN 'Kai' THEN 16 WHEN 'Vella' THEN 32 WHEN 'Hurk' THEN 64 WHEN 'Lynn' THEN 128 WHEN 'Arisha' THEN 256 WHEN 'Sylas' THEN 512 END AS ID,
 						tn.Text AS Name,
 						td.Text AS Description
 					FROM HDB_Text AS tn
@@ -260,6 +260,7 @@ namespace HeroesDB {
 						INNER JOIN RecipeMaterialInfo AS rmr ON
 							rmr.Type = 0 AND
 							rmr.RecipeID = cs.RecipeID
+            WHERE cs.ShopID != '_Craft'
 						UNION ALL
 						SELECT
 							'pc' AS RecipeType,
@@ -342,7 +343,7 @@ namespace HeroesDB {
 						'atk, bal, crit, speed, requiredLevel' AS TypePrimaryProperties,
 						LOWER(e.EquipClass) AS CategoryKey,
 						tcn.Text AS CategoryName,
-						CASE e.EquipClass WHEN 'DUALSWORD' THEN 1 WHEN 'DUALSPEAR' THEN 2 WHEN 'LONGSWORD' THEN 3 WHEN 'HAMMER' THEN 4 WHEN 'STAFF' THEN 5 WHEN 'SCYTHE' THEN 6 WHEN 'PILLAR' THEN 7 WHEN 'BLASTER' THEN 8 WHEN 'BOW' THEN 9 WHEN 'CROSSGUN' THEN 10 WHEN 'DUALBLADE' THEN 11 WHEN 'GREATSWORD' THEN 12 WHEN 'BATTLEGLAIVE' THEN 13 WHEN 'LONGBLADE' THEN 14 ELSE 15 END AS CategoryOrder,
+						CASE e.EquipClass WHEN 'DUALSWORD' THEN 1 WHEN 'DUALSPEAR' THEN 2 WHEN 'LONGSWORD' THEN 3 WHEN 'HAMMER' THEN 4 WHEN 'STAFF' THEN 5 WHEN 'SCYTHE' THEN 6 WHEN 'PILLAR' THEN 7 WHEN 'BLASTER' THEN 8 WHEN 'BOW' THEN 9 WHEN 'CROSSGUN' THEN 10 WHEN 'DUALBLADE' THEN 11 WHEN 'GREATSWORD' THEN 12 WHEN 'BATTLEGLAIVE' THEN 13 WHEN 'LONGBLADE' THEN 14 WHEN 'PHANTOMDAGGER' THEN 15 ELSE 16 END AS CategoryOrder,
 						tgn.Text || ', ' || tcn.Text AS Name
 					FROM EquipItemInfo AS e
 					INNER JOIN HDB_FeaturedEquips AS fe ON fe.EquipID = e._ROWID_
@@ -564,6 +565,7 @@ namespace HeroesDB {
 								i.ItemClass LIKE '%_fruitgift' OR
 								i.ItemClass LIKE '%_gift' OR
 								i.ItemClass LIKE '%_7days' OR
+								i.ItemClass LIKE '%_5th_rentweapon' OR
 								tn.Text GLOB '*[^A-z0-9 ()''.:-]*' OR
 								tn.Text LIKE '%(Event)' OR
 								ai.ItemClass IS NOT NULL
@@ -1317,7 +1319,7 @@ namespace HeroesDB {
 						)
 					WHERE
 						c.ObjectType = 'equip' AND
-						c.ObjectID != 3301;
+						c.ObjectID != 3313 -- event_charm_dreamer_zhtw_2;
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -1626,6 +1628,7 @@ namespace HeroesDB {
 							WHEN e.CategoryKey = 'battleglaive' THEN '1dfohf'
 							WHEN e.CategoryKey = 'longblade' THEN '2blocf'
 							WHEN e.CategoryKey = 'longblade' THEN '2blocf'
+							WHEN e.CategoryKey = 'phantomdagger' THEN '5dbocf'
 							WHEN e.CategoryKey = 'shield' THEN '3dbocf'
 							WHEN e.CategoryKey = 'largeshield' THEN '3dbocf'
 							ELSE '1frocf'
@@ -1710,6 +1713,7 @@ namespace HeroesDB {
 					) AS epg
 					INNER JOIN CombineCraftPartsInfo AS ccpi ON ccpi.PartsGroup = epg.Key
 					INNER JOIN ItemClassInfo AS ici ON ici.ItemClass = ccpi.ItemClass
+					INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = ici._ROWID_
 					LEFT JOIN HDB_Icons AS ico ON ico.Icon = ici.Icon
 					INNER JOIN HDB_Text AS tn ON tn.Key = 'HEROES_ITEM_NAME_' || UPPER(ici.ItemClass)
 					LEFT JOIN HDB_Text AS td ON td.Key = 'HEROES_ITEM_DESC_' || UPPER(ici.ItemClass)
@@ -1912,10 +1916,11 @@ namespace HeroesDB {
 							SELECT
 								si.SetID AS SetKey,
 								MAX(e.Key) AS EquipKey,
-								SUM(e.ClassRestriction) AS ClassRestriction
+								SUM(DISTINCT c.ID) AS ClassRestriction
 							FROM SetItemInfo AS si
 							LEFT JOIN HDB_BaseEquipEquips AS bee ON bee.BaseEquipKey = LOWER(si.BaseItemClass)
 							INNER JOIN HDB_Equips AS e ON e.Key = COALESCE(bee.EquipKey, LOWER(si.BaseItemClass))
+							INNER JOIN HDB_Characters AS c ON e.ClassRestriction | c.ID = e.ClassRestriction
 							GROUP BY
 								si.SetID,
 								si.BaseItemClass
@@ -2143,9 +2148,7 @@ namespace HeroesDB {
 							END AS Camera
 						FROM HDB_Characters AS c
 					) AS sc ON sc.CharacterID = c.ID
-					WHERE
-						s.GroupKey = 'armor' AND
-						s.Key != 'braha_set';
+					WHERE s.GroupKey = 'armor';
 				";
 				command.ExecuteNonQuery();
 				command.CommandText = @"
@@ -2175,7 +2178,7 @@ namespace HeroesDB {
 						e.Key = COALESCE(bee.EquipKey, sp.EquipKey) AND (
 							e.GroupKey = 'armor' OR (
 								e.GroupKey = 'weapon' AND
-								e.CategoryKey IN ('battleglaive', 'bow', 'dualsword', 'greatsword', 'longblade', 'longsword', 'pillar', 'staff')
+								e.CategoryKey IN ('battleglaive', 'bow', 'dualsword', 'greatsword', 'longblade', 'longsword', 'pillar', 'staff', 'phantomdagger')
 							)
 						) AND
 						e.ClassRestriction = e.ClassRestriction | ss.CharacterID;
@@ -2323,7 +2326,7 @@ namespace HeroesDB {
 						e.CategoryKey AS EquipCategoryKey,
 						ei.CostumeType AS EquipCostumeLabel,
 						CASE
-							WHEN es.CharacterID IN (1, 16) THEN 'male'
+							WHEN es.CharacterID IN (1, 16, 512) THEN 'male'
 							WHEN es.CharacterID IN (2, 4, 32, 128, 256) THEN 'female'
 							WHEN es.CharacterID IN (8) THEN 'giant'
 							WHEN es.CharacterID IN (64) THEN 'tall'
@@ -2454,7 +2457,7 @@ namespace HeroesDB {
 						e.CategoryKey AS EquipCategoryKey,
 						ei.CostumeType AS EquipCostumeLabel,
 						CASE
-							WHEN ss.CharacterID IN (1, 16) THEN 'male'
+							WHEN ss.CharacterID IN (1, 16, 512) THEN 'male'
 							WHEN ss.CharacterID IN (2, 4, 32, 128, 256) THEN 'female'
 							WHEN ss.CharacterID IN (8) THEN 'giant'
 							WHEN ss.CharacterID IN (64) THEN 'tall'

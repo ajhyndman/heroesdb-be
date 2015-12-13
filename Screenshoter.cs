@@ -646,7 +646,7 @@ namespace HeroesDB {
 							WHERE ss.Ready = 0
 						)
 					ORDER BY
-						CASE WHEN c.ID IN (4, 8, 64, 256) THEN 1 WHEN c.ID IN (2, 16, 32, 128) THEN 2 ELSE 3 END,
+						CASE WHEN c.ID IN (4, 8, 64, 256) THEN 1 WHEN c.ID IN (2, 16, 32, 128) THEN 2 WHEN c.ID IN (1, 512) THEN 3 ELSE 4 END,
 						c.ID;
 				";
 				var reader = command.ExecuteReader();

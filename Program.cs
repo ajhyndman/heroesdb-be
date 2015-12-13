@@ -123,8 +123,8 @@ namespace HeroesDB {
 				exp.ExportEquipParts();
 				exp.ExportSets();
 				exp.ExportSitemap();
-//				MissingMaterials(cfg);
-//				Color(cfg);
+				//MissingMaterials(cfg);
+				//Color(cfg);
 			}
 			catch (Exception exception) {
 				Debug.WriteLine(exception.Source);

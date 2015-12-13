@@ -9,13 +9,13 @@ namespace HeroesDB {
 
 	public class Config {
 
-		public readonly String RootPath = @"D:\Home\Code\HeroesDB";
+		public readonly String RootPath = @"C:\Home\Code\HeroesDB";
 
 		public readonly String AppPath;
 
-		public readonly String ExifTool = @"D:\Home\Code\HeroesDB\tools\exiftool.exe";
+		public readonly String ExifTool = @"C:\Home\Code\HeroesDB\tools\exiftool.exe";
 
-		public readonly String ImageMagickConvert = @"C:\Program Files\ImageMagick-6.9.0-Q16\convert";
+		public readonly String ImageMagickPath = @"C:\Program Files\ImageMagick-6.9.2-Q16";
 
 		public readonly String HfsPath;
 
@@ -35,7 +35,7 @@ namespace HeroesDB {
 
 		public readonly String InjectDestinationPath = @"D:\zlib_replace";
 
-		public readonly String ScreenshotSourcePath = @"C:\Users\crt\Documents\洛奇英雄传\游戏截图";
+		public readonly String ScreenshotSourcePath = @"C:\Users\Alvis\Documents\洛奇英雄传\游戏截图";
 
 		/*
 		DROP VIEW IF EXISTS HDB_tempv;
@@ -71,6 +71,7 @@ namespace HeroesDB {
 			);
 		*/
 		public readonly Dictionary<String, Color[]> Materials = new Dictionary<String, Color[]> {
+			{ "avatarcolor", new [] { Color.FromArgb(0, 242, 242, 240) } },
 			{ "beard", new [] { Color.FromArgb(0, 222, 219, 217) } },
 			{ "black", new [] { Color.FromArgb(0, 41, 41, 41), Color.FromArgb(0, 51, 56, 68) } },
 			{ "bloodlord", new [] { Color.FromArgb(0, 247, 90, 66) } },
@@ -341,6 +342,25 @@ namespace HeroesDB {
 						values["boots_color1"] = Convert.ToString(this.Materials["gray"][0].ToArgb());
 						values["boots_color2"] = Convert.ToString(this.Materials["red_strawberry"][0].ToArgb());
 						values["boots_color3"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
+						return values;
+					case 512: // Sylas
+						values["helm"] = "673";
+						values["helm_color1"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
+						values["tunic"] = "673";
+						values["tunic_color1"] = Convert.ToString(this.Materials["leather_dark"][0].ToArgb());
+						values["tunic_color2"] = Convert.ToString(this.Materials["leather"][0].ToArgb());
+						values["tunic_color3"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
+						values["pants"] = "673";
+						values["pants_color1"] = Convert.ToString(this.Materials["leather_dark"][0].ToArgb());
+						values["pants_color2"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
+						values["pants_color3"] = Convert.ToString(this.Materials["leather"][1].ToArgb());
+						values["gloves"] = "673";
+						values["gloves_color1"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
+						values["gloves_color2"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
+						values["gloves_color3"] = Convert.ToString(this.Materials["metal_dark"][0].ToArgb());
+						values["boots"] = "673";
+						values["boots_color1"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
+						values["boots_color2"] = Convert.ToString(this.Materials["leather_dark"][0].ToArgb());
 						return values;
 					default:
 						return values;

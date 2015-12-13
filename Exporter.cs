@@ -646,9 +646,10 @@ namespace HeroesDB {
 					-overwrite_original ^
 					-iptc:source=""HeroesDB.net"" ^
 					{2}
-				", this.config.ImageMagickConvert, this.config.ExifTool, outputPath);
+				", Path.Combine(this.config.ImageMagickPath, "convert"), this.config.ExifTool, outputPath);
 				var commandFile = Path.Combine(this.config.RootPath, "screenshots", "command.bat");
 				File.WriteAllText(commandFile, command);
+				Environment.SetEnvironmentVariable("Path", this.config.ImageMagickPath);
 				var process = new Process();
 				process.StartInfo.FileName = commandFile;
 				process.StartInfo.WorkingDirectory = inputPath;
