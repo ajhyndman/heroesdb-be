@@ -125,17 +125,21 @@ namespace HeroesDB {
 						Description NVARCHAR NOT NULL
 					);
 					INSERT INTO HDB_Characters
-					SELECT
-						CASE tn.Text WHEN 'Lann' THEN 1 WHEN 'Fiona' THEN 2 WHEN 'Evie' THEN 4 WHEN 'Karok' THEN 8 WHEN 'Karok' THEN 8 WHEN 'Kai' THEN 16 WHEN 'Vella' THEN 32 WHEN 'Hurk' THEN 64 WHEN 'Lynn' THEN 128 WHEN 'Arisha' THEN 256 WHEN 'Sylas' THEN 512 END AS ID,
-						tn.Text AS Name,
-						td.Text AS Description
-					FROM HDB_Text AS tn
-					LEFT JOIN HDB_Text AS td ON
-						td.Key LIKE 'GAMEUI_HEROES_NEWCHARACTERDIALOG_TYPE_COMMENT_%' AND
-						REPLACE(td.Key, 'COMMENT_', '') = tn.Key
-					WHERE
-						tn.Key LIKE 'GAMEUI_HEROES_NEWCHARACTERDIALOG_TYPE_%' AND
-						tn.Key NOT LIKE 'GAMEUI_HEROES_NEWCHARACTERDIALOG_TYPE_COMMENT_%';
+					SELECT *
+					FROM (
+						SELECT
+							CASE tn.Text WHEN 'Lann' THEN 1 WHEN 'Fiona' THEN 2 WHEN 'Evie' THEN 4 WHEN 'Karok' THEN 8 WHEN 'Karok' THEN 8 WHEN 'Kai' THEN 16 WHEN 'Vella' THEN 32 WHEN 'Hurk' THEN 64 WHEN 'Lynn' THEN 128 WHEN 'Arisha' THEN 256 WHEN 'Sylas' THEN 512 END AS ID,
+							tn.Text AS Name,
+							td.Text AS Description
+						FROM HDB_Text AS tn
+						LEFT JOIN HDB_Text AS td ON
+							td.Key LIKE 'GAMEUI_HEROES_NEWCHARACTERDIALOG_TYPE_COMMENT_%' AND
+							REPLACE(td.Key, 'COMMENT_', '') = tn.Key
+						WHERE
+							tn.Key LIKE 'GAMEUI_HEROES_NEWCHARACTERDIALOG_TYPE_%' AND
+							tn.Key NOT LIKE 'GAMEUI_HEROES_NEWCHARACTERDIALOG_TYPE_COMMENT_%'
+					) AS t
+					WHERE t.ID IS NOT NULL;
 				";
 				command.ExecuteNonQuery();
 			}
