@@ -1282,6 +1282,7 @@ namespace HeroesDB {
 								INNER JOIN HDB_tempt AS bp ON bp.PartsGroup IN (cc.PartsGroup1, cc.PartsGroup2, cc.PartsGroup3, cc.PartsGroup4, cc.PartsGroup5)
 								INNER JOIN CombineCraftPartsInfo AS ccp ON ccp.ItemClass = bp.ItemClass
 								INNER JOIN ItemClassInfo AS i ON i.ItemClass = ccp.ItemClass
+								INNER JOIN HDB_FeaturedItems AS fi ON fi.ItemID = i._ROWID_
 								GROUP BY cc.ItemClass
 							) AS ce
 							INNER JOIN CombineCraftInfo AS cc ON cc.ItemClass = ce.ItemClass

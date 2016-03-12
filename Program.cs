@@ -130,7 +130,7 @@ namespace HeroesDB {
 				Debug.WriteLine(exception.Source);
 				Debug.WriteLine(exception.Message);
 				Debug.WriteLine(exception.StackTrace);
-				throw exception;
+				throw;
 			}
 			finally {
 				Debug.Unindent();
