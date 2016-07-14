@@ -86,7 +86,7 @@ namespace HeroesDB {
 			{ "cloth_dark", new [] { Color.FromArgb(0, 66, 60, 59), Color.FromArgb(0, 67, 56, 55) } },
 			{ "cloth_santa", new [] { Color.FromArgb(0, 230, 31, 45) } },
 			{ "crystal", new [] { Color.FromArgb(0, 192, 255, 255) } },
-			{ "crystal_blue", new [] { Color.FromArgb(0, 66, 171, 236) } },
+			{ "crystal_blue", new [] { Color.FromArgb(0, 59, 130, 136), Color.FromArgb(0, 26, 68, 94) } },
 			{ "darkblue", new [] { Color.FromArgb(0, 8, 55, 105) } },
 			{ "event_euro2012_lower", new [] { Color.FromArgb(0, 233, 255, 255) } },
 			{ "event_euro2012_upper", new [] { Color.FromArgb(0, 213, 220, 220) } },
@@ -361,6 +361,22 @@ namespace HeroesDB {
 						values["boots"] = "673";
 						values["boots_color1"] = Convert.ToString(this.Materials["metal"][0].ToArgb());
 						values["boots_color2"] = Convert.ToString(this.Materials["leather_dark"][0].ToArgb());
+						return values;
+					case 1024: // Delia
+						values["tunic"] = "700";
+						values["tunic_color1"] = Convert.ToString(this.Materials["crystal_blue"][0].ToArgb());
+						values["tunic_color2"] = Convert.ToString(this.Materials["metal_silver_ex"][0].ToArgb());
+						values["tunic_color3"] = Convert.ToString(this.Materials["flat_white"][0].ToArgb());
+						values["pants"] = "700";
+						values["pants_color1"] = Convert.ToString(this.Materials["crystal_blue"][0].ToArgb());
+						values["pants_color2"] = Convert.ToString(this.Materials["metal_silver_ex"][0].ToArgb());
+						values["pants_color3"] = Convert.ToString(this.Materials["flat_white"][0].ToArgb());
+						values["gloves"] = "700";
+						values["gloves_color1"] = Convert.ToString(this.Materials["leather_dark"][0].ToArgb());
+						values["gloves_color2"] = Convert.ToString(this.Materials["metal_silver_ex"][0].ToArgb());
+						values["boots"] = "700";
+						values["boots_color1"] = Convert.ToString(this.Materials["leather_dark"][0].ToArgb());
+						values["boots_color2"] = Convert.ToString(this.Materials["metal_silver_ex"][0].ToArgb());
 						return values;
 					default:
 						return values;

@@ -2,73 +2,91 @@
 {
 	"base"
 	{
-		"sn"		"8"
+		"sn"		"10"
 		"color"		"0 0 0"
 		"pollution"		"0"
 	}
 	"inner_armor"
 	{
-		"sn"		"87"
-		"color"		"19277350 17632525 25132927"
-		"pollution"		"0"
+		"sn"		"84"
+		"color"		"16777216 16777216 16777216"
+		"pollution"		"255"
 	}
 	"face"
 	{
-		"sn"		"80"
-		"color"		"32696809 33498405 29611507"
+		"sn"		"100"
+		"color"		"33028087 33498405 33543038"
 		"pollution"		"0"
 	}
 	"hair"
 	{
-		"sn"		"6043"
-		"color"		"28477813 20596062 22566481"
+		"sn"		"6051"
+		"color"		"25405875 20596062 22566481"
 		"pollution"		"255"
 	}
 	"upper_body"
 	{
-		"sn"		"587"
-		"color"		"26985182 22431816 31774936"
+		"sn"		"678"
+		"color"		"27229257 23093356 19936063"
 		"pollution"		"0"
 	}
 	"lower_body"
 	{
-		"sn"		"587"
-		"color"		"25132927 19145764 30620732"
+		"sn"		"678"
+		"color"		"27827856 27229257 23093356"
 		"pollution"		"0"
 	}
 	"head"
 	{
-		"sn"		"587"
-		"color"		"27501475 27766711 22502510"
+		"sn"		"678"
+		"color"		"27229257 28747404 19936063"
 		"pollution"		"0"
 	}
 	"foot"
 	{
-		"sn"		"587"
-		"color"		"30461902 25536699 30067145"
+		"sn"		"678"
+		"color"		"27229257 20000557 20984878"
 		"pollution"		"0"
 	}
 	"hand"
 	{
-		"sn"		"587"
-		"color"		"16777216 23160428 19803694"
+		"sn"		"678"
+		"color"		"25132927 26376007 25132927"
+		"pollution"		"0"
+	}
+	"rear"
+	{
+		"sn"		"-1"
+		"color"		"16777216 16777216 16777216"
+		"pollution"		"0"
+	}
+	"tail"
+	{
+		"sn"		"-1"
+		"color"		"16777216 16777216 16777216"
 		"pollution"		"0"
 	}
 	"motion"
 	{
-		"sn"		"80"
+		"sn"		"102"
+		"color"		"0 0 0"
+		"pollution"		"0"
+	}
+	"common_motion"
+	{
+		"sn"		"-1"
 		"color"		"0 0 0"
 		"pollution"		"0"
 	}
 	"eyebrows"
 	{
-		"sn"		"9003"
-		"color"		"27287854 -1 -1"
+		"sn"		"11003"
+		"color"		"21050923 -1 -1"
 	}
 	"makeup"
 	{
-		"sn"		"16"
-		"color"		"33542011 16777216 33229836"
+		"sn"		"19"
+		"color"		"26292917 -1 27539289"
 	}
 	"painting"
 	{
@@ -83,7 +101,7 @@
 	"beard"
 	{
 		"sn"		"-1"
-		"color"		"16974338 -1 -1"
+		"color"		"-1 -1 -1"
 	}
 	"piercing"
 	{
@@ -92,7 +110,7 @@
 	}
 	"face_paint_rotate"		"0"
 	"face_paint_pos_x"		"0"
-	"face_paint_pos_y"		"76"
+	"face_paint_pos_y"		"90"
 	"face_paint_scale"		"10"
 	"face_shineness"		"3"
 	"body_painting"
@@ -109,15 +127,9 @@
 	"body_paint_blend"		"0"
 	"weapon"
 	{
-		"name"		"weapon_longblade"
-		"sub_type"		"10023"
-		"color"		"25396883 20854067 28031198"
-		"pollution"		"0"
-	}
-	"second_weapon"
-	{
-		"name"		"models/weapon/castlet/castlet_effect_volt.mdl"
-		"color"		"981500032 981500032 981500032"
+		"name"		"weapon_bastardsword"
+		"sub_type"		"40"
+		"color"		"30323066 30922711 20789043"
 		"pollution"		"0"
 	}
 }
